@@ -1,4 +1,5 @@
 pandas
+streamlit
 gspread~=6.2.1
 google-auth
 openai~=2.30.0
