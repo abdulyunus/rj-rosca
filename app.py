@@ -40,7 +40,7 @@ def apply_styles():
     st.markdown("""
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="theme-color" content="#1976d2">
-        <link rel="apple-touch-icon" href="logo.png">
+        <link rel="apple-touch-icon" href="ROSCA.png">
     """, unsafe_allow_html=True)
 
     st.markdown("""
@@ -185,7 +185,7 @@ def main():
         page_title='RJ-ROSCA Dashboard',
         layout='wide',
         # page_icon='💸'
-        page_icon='logo.png'
+        page_icon='ROSCA.png'
     )
 
     apply_styles()
@@ -199,7 +199,7 @@ def main():
     with col_title:
         st.title('💸 RJ-ROSCA Financial Report')
     with col_logo:
-        st.image("logo.png", width=80)
+        st.image("ROSCA.png", width=80)
 
     # -------------------------------
     # 🔌 CONNECT
