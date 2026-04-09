@@ -1,36 +1,114 @@
 import streamlit as st
-import streamlit as st
 import datetime
 
 from gsheet_client import get_gspread_client
 from config import SHEET_NAME
 from data_loader import load_main_data, load_loan_data
-from data_processor import clean_dataframe, filter_by_month, filter_loan_closed, filter_loan_disbursed
+from data_processor import clean_dataframe, filter_by_month, filter_loan_disbursed
 from metrics import calculate_metrics
 from utils import get_month_options, get_year_options
 
 
 # -------------------------------
-# 🎨 UI STYLES
+# 🎨 STYLES
 # -------------------------------
 def apply_styles():
     st.markdown("""
         <style>
         .main {background-color: #f5f7fa;}
-        .stMetric {background-color: #e3f2fd; border-radius: 10px; padding: 10px;}
-        .stDataFrame {background-color: #fff3e0; border-radius: 10px;}
-        .stSelectbox {background-color: #e8f5e9; border-radius: 10px;}
-        .stButton>button {background-color: #1976d2; color: white; border-radius: 8px;}
 
-        @media (max-width: 600px) {
-            .stApp { padding: 0.5rem !important; }
-            .stMetric { font-size: 1.1rem !important; }
-            .stDataFrame { font-size: 0.9rem !important; }
-            .block-container { padding: 0.5rem 0.2rem !important; }
-            .stSelectbox, .stButton>button { font-size: 1rem !important; }
+        .metric-card {
+            background: #e3f2fd;
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .block-container { padding: 0.5rem !important; }
+            button { width: 100% !important; }
         }
         </style>
     """, unsafe_allow_html=True)
+
+
+def metric_card(title, value):
+    st.markdown(f"""
+        <div class="metric-card">
+            <strong>{title}</strong><br>
+            {value}
+        </div>
+    """, unsafe_allow_html=True)
+
+
+# -------------------------------
+# 📱 PAGE 1: KEY METRICS
+# -------------------------------
+def page_key_metrics(sheet):
+
+    st.title("📊 Key Metrics Dashboard")
+
+    df_main = clean_dataframe(load_main_data(sheet))
+
+    # Filters
+    with st.expander("📅 Select Filters", expanded=True):
+
+        years = get_year_options(df_main)
+
+        if not years:
+            st.error("No year data found")
+            return
+
+        year = st.selectbox("Year", years)
+
+        months = [m for m in get_month_options(df_main) if m.endswith(year[-2:])]
+
+        if not months:
+            st.error("No month data found")
+            return
+
+        month = st.selectbox("Month", months)
+
+    df_month = filter_by_month(df_main, month)
+
+    if df_month.empty:
+        st.warning(f"No data for {month}")
+        return
+
+    metrics = calculate_metrics(df_month)
+
+    st.subheader("📊 Key Metrics")
+
+    # Mobile-first stacked cards
+    metric_card("Total Collection", f"₹{metrics['total_collection']:,.2f}")
+    metric_card("Total EMI Received", f"₹{metrics['total_emi']:,.2f}")
+    metric_card("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}")
+    metric_card("Loan Applications Processed", int(metrics['loan_processed']))
+    metric_card("Loans Cleared", int(metrics['loan_cleared']))
+    metric_card("Total Share Amount", f"₹{metrics['total_share']:,.2f}")
+    metric_card("Balance Available", f"₹{metrics['balance_available']:,.2f}")
+
+
+# -------------------------------
+# 💸 PAGE 2: LOANS DISBURSED
+# -------------------------------
+def page_loans_disbursed(sheet):
+
+    st.title("💸 Loans Disbursed")
+
+    df_loan = load_loan_data(sheet)
+
+    today = datetime.datetime.now()
+    next_month = (today + datetime.timedelta(days=30)).strftime('%b-%y')
+
+    month = st.text_input("Enter Month (e.g. Jan-26)", value=next_month)
+
+    df_disbursed = filter_loan_disbursed(df_loan, month)
+
+    if df_disbursed.empty:
+        st.warning(f"No loans disbursed in {month}")
+    else:
+        st.dataframe(df_disbursed, use_container_width=True)
 
 
 # -------------------------------
@@ -38,150 +116,39 @@ def apply_styles():
 # -------------------------------
 def main():
     st.set_page_config(
-        page_title='RJ-ROSCA Dashboard',
-        layout='wide',
-        page_icon='💸'
+        page_title="RJ-ROSCA Dashboard",
+        layout="wide",
+        page_icon="💸"
     )
 
     apply_styles()
 
-    st.title('💸 RJ-ROSCA Monthly Dashboard')
-    st.markdown('---')
+    # -------------------------------
+    # 📌 NAVIGATION (2 Pages)
+    # -------------------------------
+    page = st.sidebar.radio(
+        "📂 Navigation",
+        ["Key Metrics", "Loans Disbursed"]
+    )
 
     # -------------------------------
-    # 🔌 CONNECT
+    # 🔌 CONNECT ONCE
     # -------------------------------
     client = get_gspread_client()
     sheet = client.open(SHEET_NAME)
 
     # -------------------------------
-    # 📊 LOAD DATA
+    # 📄 ROUTING
     # -------------------------------
-    df_main = clean_dataframe(load_main_data(sheet))
-    df_loan = load_loan_data(sheet)
+    if page == "Key Metrics":
+        page_key_metrics(sheet)
 
-    # -------------------------------
-    # 📅 YEAR & MONTH SELECTION
-    # -------------------------------
-    years = get_year_options(df_main)
+    elif page == "Loans Disbursed":
+        page_loans_disbursed(sheet)
 
-    if not years:
-        st.error('No year data found.')
-        return
-
-    current_year = str(datetime.datetime.now().year)
-    default_year_idx = years.index(current_year) if current_year in years else 0
-
-    year = st.selectbox('Select Year', years, index=default_year_idx)
-
-    months = [m for m in get_month_options(df_main) if m.endswith(year[-2:])]
-
-    if not months:
-        st.error(f'No month data found for year {year}.')
-        return
-
-    current_month = datetime.datetime.now().strftime('%b-%y')
-    next_month_date = datetime.datetime.now() + datetime.timedelta(days=30)
-    previous_month_date = datetime.datetime.now() - datetime.timedelta(days=30)
-
-    next_month = next_month_date.strftime('%b-%y')
-    previous_month = previous_month_date.strftime('%b-%y')
-
-    if next_month not in months:
-        months = [next_month] + months
-
-    default_month_idx = months.index(current_month) if current_month in months else 0
-
-    month = st.selectbox('Select Month', months, index=default_month_idx)
-
-    # -------------------------------
-    # 📊 FILTER DATA
-    # -------------------------------
-    df_month = filter_by_month(df_main, month)
-
-    if df_month.empty:
-        st.warning(f'No data found for {month}')
-        return
-
-    # -------------------------------
-    # 📈 METRICS
-    # -------------------------------
-    metrics = calculate_metrics(df_month)
-
-    previous_month_balance = 0
-    df_prev = filter_by_month(df_main, previous_month)
-
-    if not df_prev.empty and 'Total Balance' in df_prev.columns:
-        previous_month_balance = df_prev['Total Balance'].sum()
-
-    st.info(f"📅 Showing data for the month: {month}")
-
-    st.markdown("<h3 style='color:#1976d2;'>Key Metrics</h3>", unsafe_allow_html=True)
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric("Total Collection", f"₹{metrics['total_collection']:,.2f}")
-        st.metric("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}")
-        st.metric("Prev Month Balance", f"₹{previous_month_balance:,.2f}")
-
-    with col2:
-        st.metric("Total EMI Received", f"₹{metrics['total_emi']:,.2f}")
-        st.metric("Loan Applications Processed", int(metrics['loan_processed']))
-        st.metric("Balance Available", f"₹{metrics['balance_available']:,.2f}")
-
-    with col3:
-        st.metric("Total Share Amount", f"₹{metrics['total_share']:,.2f}")
-        st.metric("Loans Cleared", int(metrics['loan_cleared']))
-
-    st.markdown('---')
-
-    # -------------------------------
-    # 💸 LOAN TABLES
-    # -------------------------------
-    st.markdown(f"<h4 style='color:#d84315;'>Loans Disbursed ({month})</h4>", unsafe_allow_html=True)
-
-    df_disbursed = filter_loan_disbursed(df_loan, next_month)
-
-    if not df_disbursed.empty:
-        st.dataframe(
-            df_disbursed.style.applymap(lambda _: 'background-color: #fffde7'),
-            height=250
-        )
-    else:
-        st.info(f'No loans disbursed in {month}', icon="💸")
-
-    st.markdown('---')
-
-    st.markdown(f"<h4 style='color:#1976d2;'>Loans to be Closed ({next_month})</h4>", unsafe_allow_html=True)
-
-    df_to_close = filter_loan_closed(df_loan, next_month)
-
-    if not df_to_close.empty:
-        st.dataframe(
-            df_to_close.style.applymap(lambda _: 'background-color: #e3f2fd'),
-            height=250
-        )
-    else:
-        st.info(f'No loans to be closed in {next_month}', icon="⏳")
-
-    st.markdown('---')
-
-    st.markdown(f"<h4 style='color:#388e3c;'>Loans Closed ({month})</h4>", unsafe_allow_html=True)
-
-    df_closed = filter_loan_closed(df_loan, month)
-
-    if not df_closed.empty:
-        st.dataframe(
-            df_closed.style.applymap(lambda _: 'background-color: #e8f5e9'),
-            height=250
-        )
-    else:
-        st.info(f'No loans closed in {month}', icon="✅")
-
-    st.markdown('---')
-
-    st.caption('Powered by ROSCA Automation | © 2026')
+    # Footer
+    st.divider()
+    st.caption("Powered by ROSCA Automation | © 2026")
 
 
 # -------------------------------
