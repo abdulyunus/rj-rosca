@@ -292,6 +292,12 @@ header {visibility: hidden;}
 
 st.set_page_config(layout="centered")
 
+st.markdown("""
+    <meta name="application-name" content="RJ-ROSCA">
+    <meta name="apple-mobile-web-app-title" content="RJ-ROSCA">
+    <meta name="theme-color" content="#1976d2">
+""", unsafe_allow_html=True)
+
 # -------------------------------
 # ▶️ RUN
 # -------------------------------
