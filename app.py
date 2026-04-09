@@ -38,6 +38,12 @@ def is_mobile(width):
 # -------------------------------
 def apply_styles():
     st.markdown("""
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="theme-color" content="#1976d2">
+        <link rel="apple-touch-icon" href="logo.png">
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
         <style>
 
         /* 🌈 Background */
@@ -103,6 +109,56 @@ def apply_styles():
         </style>
     """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+
+/* 🔥 Hide Streamlit default UI */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+/* 🔥 Remove top bar completely */
+[data-testid="stHeader"] {
+    display: none;
+}
+
+/* 🔥 Remove toolbar (GitHub / Deploy button) */
+[data-testid="stToolbar"] {
+    display: none !important;
+}
+
+/* 🔥 Remove decoration (top right icons) */
+[data-testid="stDecoration"] {
+    display: none !important;
+}
+
+/* 🔥 Remove status widget */
+[data-testid="stStatusWidget"] {
+    display: none !important;
+}
+
+/* 🔥 Remove fullscreen button */
+button[title="View fullscreen"] {
+    display: none !important;
+}
+
+/* 🔥 Prevent top spacing issue */
+.block-container {
+    padding-top: 0rem !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+html, body, .stApp {
+    overflow-x: hidden !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.set_page_config(layout="centered")
 
 # -------------------------------
 # 📦 KPI CARD
@@ -129,7 +185,7 @@ def main():
         page_title='RJ-ROSCA Dashboard',
         layout='wide',
         # page_icon='💸'
-        page_icon='ROSCA.png'
+        page_icon='logo.png'
     )
 
     apply_styles()
@@ -143,7 +199,7 @@ def main():
     with col_title:
         st.title('💸 RJ-ROSCA Financial Report')
     with col_logo:
-        st.image("ROSCA.png", width=80)
+        st.image("logo.png", width=80)
 
     # -------------------------------
     # 🔌 CONNECT
@@ -158,40 +214,74 @@ def main():
     df_loan = load_loan_data(sheet)
 
     # -------------------------------
-    # 📅 FILTERS
+    # 📅 FILTERS (FANCY UI)
     # -------------------------------
-    with st.expander("📅 Select Filters", expanded=True):
+    st.markdown("""
+        <style>
+        .filter-box {
+            background: linear-gradient(135deg, #1e88e5, #42a5f5);
+            padding: 15px;
+            border-radius: 15px;
+            color: white;
+            margin-bottom: 15px;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.2);
+        }
 
-        years = get_year_options(df_main)
+        .filter-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
 
-        if not years:
-            st.error('No year data found.')
-            return
+        div[data-baseweb="select"] {
+            background-color: white !important;
+            border-radius: 10px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-        current_year = str(datetime.datetime.now().year)
-        default_year_idx = years.index(current_year) if current_year in years else 0
+    with st.container():
+        st.markdown('<div class="filter-box">', unsafe_allow_html=True)
+        st.markdown('<div class="filter-title">📅 Select Filters</div>', unsafe_allow_html=True)
 
-        year = st.selectbox('Year', years, index=default_year_idx)
+        col1, col2 = st.columns(2)
 
-        months = [m for m in get_month_options(df_main) if m.endswith(year[-2:])]
+        # Year Dropdown
+        with col1:
+            years = get_year_options(df_main)
 
-        if not months:
-            st.error(f'No month data found for year {year}.')
-            return
+            if not years:
+                st.error('No year data found.')
+                return
 
-        current_month = datetime.datetime.now().strftime('%b-%y')
-        next_month_date = datetime.datetime.now() + datetime.timedelta(days=30)
-        previous_month_date = datetime.datetime.now() - datetime.timedelta(days=30)
+            current_year = str(datetime.datetime.now().year)
+            default_year_idx = years.index(current_year) if current_year in years else 0
 
-        next_month = next_month_date.strftime('%b-%y')
-        previous_month = previous_month_date.strftime('%b-%y')
+            year = st.selectbox("📆 Year", years, index=default_year_idx)
 
-        if next_month not in months:
-            months = [next_month] + months
+        # Month Dropdown
+        with col2:
+            months = [m for m in get_month_options(df_main) if m.endswith(year[-2:])]
 
-        default_month_idx = months.index(current_month) if current_month in months else 0
+            if not months:
+                st.error(f'No month data found for year {year}.')
+                return
 
-        month = st.selectbox('Month', months, index=default_month_idx)
+            current_month = datetime.datetime.now().strftime('%b-%y')
+            next_month_date = datetime.datetime.now() + datetime.timedelta(days=30)
+            previous_month_date = datetime.datetime.now() - datetime.timedelta(days=30)
+
+            next_month = next_month_date.strftime('%b-%y')
+            previous_month = previous_month_date.strftime('%b-%y')
+
+            if next_month not in months:
+                months = [next_month] + months
+
+            default_month_idx = months.index(current_month) if current_month in months else 0
+
+            month = st.selectbox("📅 Month", months, index=default_month_idx)
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # -------------------------------
     # 📊 FILTER DATA
@@ -281,22 +371,6 @@ def main():
     st.divider()
     st.caption('Powered by ROSCA Automation | © 2026')
 
-# Hide streamlit header
-st.markdown("""
-<style>
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-</style>
-""", unsafe_allow_html=True)
-
-st.set_page_config(layout="centered")
-
-st.markdown("""
-    <meta name="application-name" content="RJ-ROSCA">
-    <meta name="apple-mobile-web-app-title" content="RJ-ROSCA">
-    <meta name="theme-color" content="#1976d2">
-""", unsafe_allow_html=True)
 
 # -------------------------------
 # ▶️ RUN
