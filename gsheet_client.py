@@ -15,7 +15,7 @@ def get_gspread_client() -> gspread.Client:
     Credentials are read from st.secrets["gcp_service_account"].
     """
     # creds_dict = dict(st.secrets["gcp_service_account"])   # mapping → plain dict
-    creds_dict = json.loads(st.secrets["gcp_service_account"])   # mapping → plain dict
+    creds_dict = json.dumps(st.secrets["gcp_service_account"])   # mapping → plain dict
 
     print("Printing the creds")
     print(creds_dict)
