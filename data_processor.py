@@ -23,4 +23,4 @@ def filter_loan_closed(df, month):
 
 
 def filter_loan_disbursed(df, month):
-    return df[df['EMI Start Month'] == month] if 'EMI Start Month' in df.columns else pd.DataFrame()
+    return df[df['Month'] == month] if 'EMI Start Month' in df.columns else pd.DataFrame()
