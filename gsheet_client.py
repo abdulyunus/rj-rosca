@@ -2,7 +2,7 @@ import gspread
 import streamlit as st
 from google.oauth2.service_account import Credentials
 
-
+@st.cache_resource
 def get_gspread_client():
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
