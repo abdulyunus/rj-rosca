@@ -109,6 +109,8 @@ def apply_styles():
         </style>
     """, unsafe_allow_html=True)
 
+
+
 st.markdown("""
 <style>
 
@@ -177,6 +179,76 @@ def metric_card(title, value, color, icon="📊"):
     """, unsafe_allow_html=True)
 
 
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from io import BytesIO
+
+
+def generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close):
+    buffer = BytesIO()
+
+    doc = SimpleDocTemplate(buffer)
+    styles = getSampleStyleSheet()
+
+    elements = []
+
+    # Title
+    elements.append(Paragraph("RJ-ROSCA Financial Report", styles['Title']))
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph(f"Month: {month}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+
+    # KPI Section
+    elements.append(Paragraph("Key Metrics", styles['Heading2']))
+    elements.append(Spacer(1, 10))
+
+    kpi_data = [
+        ["Metric", "Value"],
+        ["Total Collection", f"₹{metrics['total_collection']:,.2f}"],
+        ["Total EMI", f"₹{metrics['total_emi']:,.2f}"],
+        ["Loans Disbursed", f"₹{metrics['total_loans']:,.2f}"],
+        ["Loans Cleared", metrics['loan_cleared']],
+        ["Balance", f"₹{metrics['balance_available']:,.2f}"],
+    ]
+
+    kpi_table = Table(kpi_data)
+    kpi_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
+    ]))
+
+    elements.append(kpi_table)
+    elements.append(Spacer(1, 20))
+
+    # Helper function for tables
+    def df_to_table(df, title):
+        elements.append(Paragraph(title, styles['Heading3']))
+        elements.append(Spacer(1, 8))
+
+        data = [df.columns.tolist()] + df.values.tolist()
+        table = Table(data)
+
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
+        ]))
+
+        elements.append(table)
+        elements.append(Spacer(1, 20))
+
+    # Add Tables
+    df_to_table(df_disbursed, "Loans Disbursed")
+    df_to_table(df_closed, "Loans Closed")
+    df_to_table(df_to_close, "Loans To Close")
+
+    doc.build(elements)
+
+    buffer.seek(0)
+    return buffer
+
 # -------------------------------
 # 🚀 MAIN APP
 # -------------------------------
@@ -200,6 +272,7 @@ def main():
         st.title('💸 RJ-ROSCA Financial Report')
     with col_logo:
         st.image("ROSCA.png", width=80)
+
 
     # -------------------------------
     # 🔌 CONNECT
@@ -367,6 +440,24 @@ def main():
 
         st.subheader(f"⏳ Loans to Close ({next_month})")
         st.dataframe(df_to_close, use_container_width=True)
+
+    # -------------------------------
+    # 📄 DOWNLOAD PDF
+    # -------------------------------
+    pdf_buffer = generate_pdf(
+        month,
+        metrics,
+        df_disbursed,
+        df_closed,
+        df_to_close
+    )
+
+    st.download_button(
+        label="📄 Download Report as PDF",
+        data=pdf_buffer,
+        file_name=f"ROSCA_Report_{month}.pdf",
+        mime="application/pdf"
+    )
 
     st.divider()
     st.caption('Powered by ROSCA Automation | © 2026')
