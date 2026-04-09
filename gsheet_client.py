@@ -1,4 +1,5 @@
 import gspread
+import json
 import streamlit as st
 from google.oauth2.service_account import Credentials
 
@@ -13,7 +14,9 @@ def get_gspread_client() -> gspread.Client:
     Build and return an authorised gspread client.
     Credentials are read from st.secrets["gcp_service_account"].
     """
-    creds_dict = dict(st.secrets["gcp_service_account"])   # mapping → plain dict
+    # creds_dict = dict(st.secrets["gcp_service_account"])   # mapping → plain dict
+    creds_dict = json.loads(st.secrets["gcp_service_account"])   # mapping → plain dict
+
     print("Printing the creds")
     print(creds_dict)
     print(f"The Type of the creds_dict is : {type(creds_dict)}")
