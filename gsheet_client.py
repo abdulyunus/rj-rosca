@@ -16,6 +16,6 @@ def get_gspread_client() -> gspread.Client:
     creds_dict = dict(st.secrets["gcp_service_account"])   # mapping → plain dict
     print("Printing the creds")
     print(creds_dict)
-    print(f"The Type of the creds_dict is : {dtype(creds_dict)}")
+    print(f"The Type of the creds_dict is : {type(creds_dict)}")
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(creds)
