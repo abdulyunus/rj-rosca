@@ -2,10 +2,9 @@ import gspread
 import streamlit as st
 from google.oauth2.service_account import Credentials
 
-SCOPES = [
+scopes = [
     "https://www.googleapis.com/auth/spreadsheets.readonly",
-    "https://www.googleapis.com/auth/drive.readonly",
-]
+    "https://www.googleapis.com/auth/drive.readonly"]
  
  
 @st.cache_resource(show_spinner=False)
