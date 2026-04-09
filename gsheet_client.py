@@ -14,11 +14,15 @@ def get_gspread_client() -> gspread.Client:
     Build and return an authorised gspread client.
     Credentials are read from st.secrets["gcp_service_account"].
     """
-    # creds_dict = dict(st.secrets["gcp_service_account"])   # mapping → plain dict
-    creds_dict = json.dumps(st.secrets["gcp_service_account"])   # mapping → plain dict
+    creds_dict = dict(st.secrets["gcp_service_account"])   # mapping → plain dict
+    # creds_dict = json.dumps(st.secrets["gcp_service_account"])   # mapping → plain dict
 
     print("Printing the creds")
     print(creds_dict)
     print(f"The Type of the creds_dict is : {type(creds_dict)}")
+    
+    print(f"Type of the streamlit secretes : {type(st.secrets["gcp_service_account"])}")
+    print(f"Streamlit secretes : {st.secrets["gcp_service_account"]}")
+    
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(creds)
