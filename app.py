@@ -195,35 +195,11 @@ def main():
     mobile = is_mobile(screen_width)
 
     # Title and logo side by side
-    # col_title, col_logo = st.columns([0.8, 0.2])
-    # with col_title:
-    #     st.title('💸 RJ-ROSCA Financial Report')
-    # with col_logo:
-    #     st.image("ROSCA.png", width=80)
-
-    # -------------------------------
-    # 🧾 HEADER (CENTERED LOGO)
-    # -------------------------------
-    st.markdown("""
-    <style>
-    .logo-container {
-        text-align: center;
-        margin-top: 10px;
-        margin-bottom: 5px;
-    }
-    .logo-title {
-        text-align: center;
-        font-size: 22px;
-        font-weight: 600;
-        margin-top: 5px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-    st.image("ROSCA.png", width=90)
-    st.markdown('<div class="logo-title">💸 RJ-ROSCA Dashboard</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    col_title, col_logo = st.columns([0.8, 0.2])
+    with col_title:
+        st.title('💸 RJ-ROSCA Financial Report')
+    with col_logo:
+        st.image("ROSCA.png", width=80)
 
     # -------------------------------
     # 🔌 CONNECT
