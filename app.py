@@ -128,7 +128,8 @@ def main():
     st.set_page_config(
         page_title='RJ-ROSCA Dashboard',
         layout='wide',
-        page_icon='💸'
+        # page_icon='💸'
+        page_icon='ROSCA.png'
     )
 
     apply_styles()
@@ -137,7 +138,12 @@ def main():
     screen_width = get_screen_width()
     mobile = is_mobile(screen_width)
 
-    st.title('💸 RJ-ROSCA Dashboard')
+    # Title and logo side by side
+    col_title, col_logo = st.columns([0.8, 0.2])
+    with col_title:
+        st.title('💸 RJ-ROSCA Financial Report')
+    with col_logo:
+        st.image("ROSCA.png", width=80)
 
     # -------------------------------
     # 🔌 CONNECT
