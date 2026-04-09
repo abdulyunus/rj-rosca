@@ -10,5 +10,5 @@ def get_gspread_client():
     ]
     creds_dict = dict(st.secrets["gcp_service_account"])
     
-    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
