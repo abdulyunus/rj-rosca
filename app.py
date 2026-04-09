@@ -245,21 +245,24 @@ def main():
         with st.expander(f"💸 Loans Disbursed ({month})"):
             st.dataframe(df_disbursed, use_container_width=True)
 
+        with st.expander(f"✅ Loans Closed ({month})"):
+            st.dataframe(df_closed, use_container_width=True)
+        
         with st.expander(f"⏳ Loans to Close ({next_month})"):
             st.dataframe(df_to_close, use_container_width=True)
 
-        with st.expander(f"✅ Loans Closed ({month})"):
-            st.dataframe(df_closed, use_container_width=True)
+        
 
     else:
         st.subheader(f"💸 Loans Disbursed ({month})")
         st.dataframe(df_disbursed, use_container_width=True)
 
+        st.subheader(f"✅ Loans Closed ({month})")
+        st.dataframe(df_closed, use_container_width=True)
+        
         st.subheader(f"⏳ Loans to Close ({next_month})")
         st.dataframe(df_to_close, use_container_width=True)
 
-        st.subheader(f"✅ Loans Closed ({month})")
-        st.dataframe(df_closed, use_container_width=True)
 
     st.divider()
     st.caption('Powered by ROSCA Automation | © 2026')
