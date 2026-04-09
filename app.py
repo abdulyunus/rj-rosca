@@ -281,6 +281,14 @@ def main():
     st.divider()
     st.caption('Powered by ROSCA Automation | © 2026')
 
+# Hide streamlit header
+st.markdown("""
+<style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
 
 # -------------------------------
 # ▶️ RUN
