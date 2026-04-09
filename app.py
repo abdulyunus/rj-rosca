@@ -26,7 +26,7 @@ def get_screen_width():
     try:
         return int(width)
     except:
-        return 1024  # fallback (desktop)
+        return 1024
 
 
 def is_mobile(width):
@@ -34,20 +34,53 @@ def is_mobile(width):
 
 
 # -------------------------------
-# 🎨 STYLES
+# 🎨 STYLES (Animated + Colorful)
 # -------------------------------
 def apply_styles():
     st.markdown("""
         <style>
-        .main {background-color: #f5f7fa;}
 
-        .metric-card {
-            background: #e3f2fd;
-            padding: 12px;
-            border-radius: 12px;
-            margin-bottom: 10px;
+        /* 🌈 Background */
+        .stApp {
+            background: linear-gradient(135deg, #e3f2fd, #fce4ec, #e8f5e9);
+            background-attachment: fixed;
         }
 
+        .block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+        }
+
+        /* 🎯 KPI Cards */
+        .metric-card {
+            padding: 16px;
+            border-radius: 16px;
+            margin-bottom: 14px;
+            color: white;
+            font-weight: 500;
+            box-shadow: 0px 4px 12px rgba(0,0,0,0.15);
+
+            transition: all 0.3s ease-in-out;
+            cursor: pointer;
+        }
+
+        /* ✨ Hover Animation */
+        .metric-card:hover {
+            transform: translateY(-6px) scale(1.02);
+            box-shadow: 0px 8px 20px rgba(0,0,0,0.25);
+        }
+
+        /* 🎨 Colors */
+        .blue { background: linear-gradient(135deg, #42a5f5, #1e88e5); }
+        .green { background: linear-gradient(135deg, #66bb6a, #2e7d32); }
+        .orange { background: linear-gradient(135deg, #ffa726, #ef6c00); }
+        .purple { background: linear-gradient(135deg, #ab47bc, #6a1b9a); }
+        .red { background: linear-gradient(135deg, #ef5350, #c62828); }
+        .teal { background: linear-gradient(135deg, #26c6da, #00838f); }
+        .pink { background: linear-gradient(135deg, #ec407a, #ad1457); }
+        .indigo { background: linear-gradient(135deg, #5c6bc0, #283593); }
+
+        /* 📱 Mobile */
         @media (max-width: 768px) {
             .block-container {
                 padding: 0.5rem !important;
@@ -61,23 +94,29 @@ def apply_styles():
                 width: 100% !important;
             }
 
-            div[data-testid="column"] {
-                width: 100% !important;
-                flex: 1 1 100% !important;
+            .metric-card:hover {
+                transform: none;
+                box-shadow: 0px 4px 12px rgba(0,0,0,0.15);
             }
         }
+
         </style>
     """, unsafe_allow_html=True)
 
 
 # -------------------------------
-# 📦 METRIC CARD
+# 📦 KPI CARD
 # -------------------------------
-def metric_card(title, value):
+def metric_card(title, value, color, icon="📊"):
     st.markdown(f"""
-        <div class="metric-card">
-            <strong>{title}</strong><br>
-            {value}
+        <div class="metric-card {color}">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:14px;">{title}</div>
+                <div style="font-size:22px;">{icon}</div>
+            </div>
+            <div style="font-size:22px; font-weight:bold; margin-top:5px;">
+                {value}
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -169,33 +208,29 @@ def main():
     st.subheader("📊 Key Metrics")
 
     if mobile:
-        # 📱 Mobile Layout
-        metric_card("Total Collection", f"₹{metrics['total_collection']:,.2f}")
-        metric_card("Total EMI Received", f"₹{metrics['total_emi']:,.2f}")
-        metric_card("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}")
-        metric_card("Loan Applications Processed", int(metrics['loan_processed']))
-        metric_card("Loans Cleared", int(metrics['loan_cleared']))
-        metric_card("Total Share Amount", f"₹{metrics['total_share']:,.2f}")
-        metric_card("Balance Available", f"₹{metrics['balance_available']:,.2f}")
-        metric_card("Previous Month Balance", f"₹{previous_month_balance:,.2f}")
+        metric_card("Total Collection", f"₹{metrics['total_collection']:,.2f}", "blue", "💰")
+        metric_card("Total EMI Received", f"₹{metrics['total_emi']:,.2f}", "green", "💵")
+        metric_card("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}", "orange", "🏦")
+        metric_card("Loan Applications Processed", int(metrics['loan_processed']), "purple", "📄")
+        metric_card("Loans Cleared", int(metrics['loan_cleared']), "red", "✅")
+        metric_card("Total Share Amount", f"₹{metrics['total_share']:,.2f}", "teal", "📊")
+        metric_card("Balance Available", f"₹{metrics['balance_available']:,.2f}", "pink", "💳")
+        metric_card("Previous Month Balance", f"₹{previous_month_balance:,.2f}", "indigo", "📅")
 
     else:
-        # 🖥 Desktop Layout
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.metric("Total Collection", f"₹{metrics['total_collection']:,.2f}")
-            st.metric("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}")
-            st.metric("Prev Month Balance", f"₹{previous_month_balance:,.2f}")
+            metric_card("Total Collection", f"₹{metrics['total_collection']:,.2f}", "blue", "💰")
+            metric_card("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}", "orange", "🏦")
 
         with col2:
-            st.metric("Total EMI Received", f"₹{metrics['total_emi']:,.2f}")
-            st.metric("Loan Applications Processed", int(metrics['loan_processed']))
-            st.metric("Balance Available", f"₹{metrics['balance_available']:,.2f}")
+            metric_card("Total EMI Received", f"₹{metrics['total_emi']:,.2f}", "green", "💵")
+            metric_card("Loan Applications Processed", int(metrics['loan_processed']), "purple", "📄")
 
         with col3:
-            st.metric("Total Share Amount", f"₹{metrics['total_share']:,.2f}")
-            st.metric("Loans Cleared", int(metrics['loan_cleared']))
+            metric_card("Balance Available", f"₹{metrics['balance_available']:,.2f}", "pink", "💳")
+            metric_card("Loans Cleared", int(metrics['loan_cleared']), "red", "✅")
 
     st.divider()
 
@@ -207,7 +242,6 @@ def main():
     df_closed = filter_loan_closed(df_loan, month)
 
     if mobile:
-        # 📱 Mobile → Expanders
         with st.expander(f"💸 Loans Disbursed ({month})"):
             st.dataframe(df_disbursed, use_container_width=True)
 
@@ -218,7 +252,6 @@ def main():
             st.dataframe(df_closed, use_container_width=True)
 
     else:
-        # 🖥 Desktop → Full tables
         st.subheader(f"💸 Loans Disbursed ({month})")
         st.dataframe(df_disbursed, use_container_width=True)
 
