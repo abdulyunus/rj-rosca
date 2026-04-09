@@ -237,9 +237,18 @@ def main():
     # -------------------------------
     # 💸 LOAN TABLES
     # -------------------------------
-    df_disbursed = filter_loan_disbursed(df_loan, next_month)
-    df_to_close = filter_loan_closed(df_loan, next_month)
+    # df_disbursed = filter_loan_disbursed(df_loan, next_month)
+    # df_to_close = filter_loan_closed(df_loan, next_month)
+    # df_closed = filter_loan_closed(df_loan, month)
+
+    # 💸 Loans Disbursed → Selected Month
+    df_disbursed = filter_loan_disbursed(df_loan, month)
+
+    # ✅ Loans Closed → Selected Month
     df_closed = filter_loan_closed(df_loan, month)
+
+    # ⏳ Loans to Close → Next Month
+    df_to_close = filter_loan_closed(df_loan, next_month)
 
     if mobile:
         with st.expander(f"💸 Loans Disbursed ({month})"):
@@ -247,11 +256,11 @@ def main():
 
         with st.expander(f"✅ Loans Closed ({month})"):
             st.dataframe(df_closed, use_container_width=True)
-        
+
         with st.expander(f"⏳ Loans to Close ({next_month})"):
             st.dataframe(df_to_close, use_container_width=True)
 
-        
+
 
     else:
         st.subheader(f"💸 Loans Disbursed ({month})")
@@ -259,10 +268,9 @@ def main():
 
         st.subheader(f"✅ Loans Closed ({month})")
         st.dataframe(df_closed, use_container_width=True)
-        
+
         st.subheader(f"⏳ Loans to Close ({next_month})")
         st.dataframe(df_to_close, use_container_width=True)
-
 
     st.divider()
     st.caption('Powered by ROSCA Automation | © 2026')
