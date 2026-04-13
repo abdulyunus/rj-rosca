@@ -1,513 +1,29 @@
-import streamlit as st
 import datetime
-import hmac
-import streamlit.components.v1 as components
 
-from gsheet_client import get_gspread_client
-from config import SHEET_NAME, USER_CREDENTIALS_SHEET, EMI_CUTOFF_DAY
+import streamlit as st
+
+from auth import render_login_page
+from config import SHEET_NAME
 from data_loader import load_main_data, load_loan_data
 from data_processor import clean_dataframe, filter_by_month, filter_loan_closed, filter_loan_disbursed
+from gsheet_client import get_gspread_client
+from loan_services import (
+    find_column,
+    get_team_member_active_loans,
+    get_team_members,
+    get_user_active_loans,
+    parse_month_label,
+    to_float,
+)
 from metrics import calculate_metrics
+from reporting import generate_pdf
+from ui_components import apply_styles, get_screen_width, is_mobile, metric_card
 from utils import get_month_options, get_year_options
 
 
-# -------------------------------
-# 📱 DEVICE DETECTION
-# -------------------------------
-def get_screen_width():
-    width = components.html(
+def _render_filters(df_main):
+    st.markdown(
         """
-        <script>
-        const width = window.innerWidth;
-        document.write(width);
-        </script>
-        """,
-        height=0,
-    )
-    try:
-        return int(width)
-    except:
-        return 1024
-
-
-def is_mobile(width):
-    return width < 768
-
-
-# -------------------------------
-# 🎨 STYLES (Animated + Colorful)
-# -------------------------------
-def apply_styles():
-    st.markdown("""
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta name="theme-color" content="#1976d2">
-        <link rel="apple-touch-icon" href="ROSCA.png">
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-        <style>
-
-        /* 🌈 Background */
-        .stApp {
-            background: linear-gradient(135deg, #e3f2fd, #fce4ec, #e8f5e9);
-            background-attachment: fixed;
-        }
-
-        .block-container {
-            padding-top: 1rem;
-            padding-bottom: 1rem;
-        }
-
-        /* 🎯 KPI Cards */
-        .metric-card {
-            padding: 16px;
-            border-radius: 16px;
-            margin-bottom: 14px;
-            color: white;
-            font-weight: 500;
-            box-shadow: 0px 4px 12px rgba(0,0,0,0.15);
-
-            transition: all 0.3s ease-in-out;
-            cursor: pointer;
-        }
-
-        /* ✨ Hover Animation */
-        .metric-card:hover {
-            transform: translateY(-6px) scale(1.02);
-            box-shadow: 0px 8px 20px rgba(0,0,0,0.25);
-        }
-
-        /* 🎨 Colors */
-        .blue { background: linear-gradient(135deg, #42a5f5, #1e88e5); }
-        .green { background: linear-gradient(135deg, #66bb6a, #2e7d32); }
-        .orange { background: linear-gradient(135deg, #ffa726, #ef6c00); }
-        .purple { background: linear-gradient(135deg, #ab47bc, #6a1b9a); }
-        .red { background: linear-gradient(135deg, #ef5350, #c62828); }
-        .teal { background: linear-gradient(135deg, #26c6da, #00838f); }
-        .pink { background: linear-gradient(135deg, #ec407a, #ad1457); }
-        .indigo { background: linear-gradient(135deg, #5c6bc0, #283593); }
-
-        /* 📱 Mobile */
-        @media (max-width: 768px) {
-            .block-container {
-                padding: 0.5rem !important;
-            }
-
-            h1, h2, h3 {
-                font-size: 1.2rem !important;
-            }
-
-            button {
-                width: 100% !important;
-            }
-
-            .metric-card:hover {
-                transform: none;
-                box-shadow: 0px 4px 12px rgba(0,0,0,0.15);
-            }
-        }
-
-        </style>
-    """, unsafe_allow_html=True)
-
-
-
-st.markdown("""
-<style>
-
-/* 🔥 Hide Streamlit default UI */
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-
-/* 🔥 Remove top bar completely */
-[data-testid="stHeader"] {
-    display: none;
-}
-
-/* 🔥 Remove toolbar (GitHub / Deploy button) */
-[data-testid="stToolbar"] {
-    display: none !important;
-}
-
-/* 🔥 Remove decoration (top right icons) */
-[data-testid="stDecoration"] {
-    display: none !important;
-}
-
-/* 🔥 Remove status widget */
-[data-testid="stStatusWidget"] {
-    display: none !important;
-}
-
-/* 🔥 Remove fullscreen button */
-button[title="View fullscreen"] {
-    display: none !important;
-}
-
-/* 🔥 Prevent top spacing issue */
-.block-container {
-    padding-top: 0rem !important;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-html, body, .stApp {
-    overflow-x: hidden !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# -------------------------------
-# 📦 KPI CARD
-# -------------------------------
-def metric_card(title, value, color, icon="📊"):
-    st.markdown(f"""
-        <div class="metric-card {color}">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="font-size:14px;">{title}</div>
-                <div style="font-size:22px;">{icon}</div>
-            </div>
-            <div style="font-size:22px; font-weight:bold; margin-top:5px;">
-                {value}
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
-from io import BytesIO
-
-
-def _find_column(df, candidates):
-    normalized = {str(col).strip().lower(): col for col in df.columns}
-    for name in candidates:
-        key = name.strip().lower()
-        if key in normalized:
-            return normalized[key]
-    return None
-
-
-def _normalize_member_name(value):
-    # Keep only text before first '-' and normalize for matching.
-    return str(value).split("-", 1)[0].strip().lower()
-
-
-def _parse_month_label(month_value):
-    text = str(month_value).strip()
-    if not text:
-        return None
-
-    patterns = ["%b-%y", "%b-%Y", "%B-%y", "%B-%Y"]
-    for pattern in patterns:
-        try:
-            parsed = datetime.datetime.strptime(text, pattern)
-            return datetime.date(parsed.year, parsed.month, 1)
-        except ValueError:
-            continue
-    return None
-
-
-def _month_span_inclusive(start_month, end_month):
-    if not start_month or not end_month:
-        return 0
-    if end_month < start_month:
-        return 0
-    return (end_month.year - start_month.year) * 12 + (end_month.month - start_month.month) + 1
-
-
-def _to_float(value):
-    text = str(value).replace(",", "").replace("₹", "").strip()
-    try:
-        return float(text)
-    except ValueError:
-        return 0.0
-
-
-def get_user_active_loans(df_loan, user_name):
-    if df_loan.empty:
-        return df_loan
-
-    name_col = _find_column(df_loan, ["Name", "Member Name", "Customer Name"])
-    status_col = _find_column(df_loan, ["Status", "Loan Status"])
-    emi_start_col = _find_column(df_loan, ["EMI Start Month", "EMI_Start_Month", "Start Month"])
-    last_emi_col = _find_column(df_loan, ["Last EMI Month", "Last_EMI_Month", "End Month"])
-    loan_amount_col = _find_column(df_loan, ["Loan Amount", "Loan", "Total Loan Amount", "Disbursed Amount"])
-    total_months_col = _find_column(df_loan, ["Total Months", "Tenure", "Loan Tenure", "EMI Months"])
-
-    if not name_col or not status_col:
-        return df_loan.iloc[0:0]
-
-    user_key = _normalize_member_name(user_name)
-    df_filtered = df_loan.copy()
-    df_filtered["_name_key"] = df_filtered[name_col].apply(_normalize_member_name)
-    df_filtered["_status_key"] = df_filtered[status_col].astype(str).str.strip().str.lower()
-
-    user_active_loans = df_filtered[
-        (df_filtered["_name_key"] == user_key) &
-        (df_filtered["_status_key"] == "active")
-    ].copy()
-
-    today = datetime.date.today()
-    current_month = today.replace(day=1)
-    post_due_day_adjustment = 1 if today.day > EMI_CUTOFF_DAY else 0
-
-    def _remaining_emi(row):
-        if not emi_start_col or not last_emi_col:
-            return 0
-        start_month = _parse_month_label(row.get(emi_start_col, ""))
-        end_month = _parse_month_label(row.get(last_emi_col, ""))
-        effective_start = max(start_month, current_month) if start_month else current_month
-        remaining = _month_span_inclusive(effective_start, end_month)
-        if post_due_day_adjustment:
-            remaining = max(remaining - post_due_day_adjustment, 0)
-        return remaining
-
-    user_active_loans["EMI Remaining"] = user_active_loans.apply(_remaining_emi, axis=1)
-
-    if loan_amount_col and total_months_col:
-        loan_amount_series = user_active_loans[loan_amount_col].apply(_to_float)
-        total_months_series = user_active_loans[total_months_col].apply(_to_float)
-        monthly_component = loan_amount_series / total_months_series.replace(0, float("nan"))
-        user_active_loans["Amount to Pay"] = (
-            user_active_loans["EMI Remaining"] * monthly_component.fillna(0)
-        )
-    else:
-        user_active_loans["Amount to Pay"] = 0.0
-
-    user_active_loans["Amount to Pay"] = user_active_loans["Amount to Pay"].round(2)
-
-    return user_active_loans.drop(columns=["_name_key", "_status_key"], errors="ignore")
-
-
-def load_user_credentials(sheet):
-    try:
-        ws = sheet.worksheet(USER_CREDENTIALS_SHEET)
-        records = ws.get_all_records()
-    except Exception:
-        return {}
-
-    if not records:
-        return {}
-
-    import pandas as pd
-
-    df_users = pd.DataFrame(records)
-    if df_users.empty:
-        return {}
-
-    login_col = _find_column(df_users, ["login_id", "login id", "username", "user_id", "userid", "id"])
-    password_col = _find_column(df_users, ["password", "pass", "pwd"])
-    member_name_col = _find_column(df_users, ["member_name", "member name", "name", "full_name", "full name"])
-
-    if not login_col or not password_col:
-        return {}
-
-    creds = {}
-    for _, row in df_users.iterrows():
-        login_id = str(row.get(login_col, "")).strip()
-        password = str(row.get(password_col, "")).strip()
-        member_name = str(row.get(member_name_col, "")).strip() if member_name_col else ""
-        if login_id and password:
-            creds[login_id] = {
-                "password": password,
-                "member_name": member_name or login_id,
-            }
-    return creds
-
-
-def render_login_page(sheet):
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-        st.session_state.user_id = ""
-        st.session_state.user_name = ""
-
-    if st.session_state.authenticated:
-        if "user_name" not in st.session_state or not st.session_state.user_name:
-            st.session_state.user_name = st.session_state.user_id
-        return True
-
-    logo_col_left, logo_col_center, logo_col_right = st.columns([1, 1, 1])
-    with logo_col_center:
-        st.image("ROSCA.png", width=110)
-
-    st.markdown("<h2 style='text-align:center;'>Welcome to RJ ROSCA!</h2>", unsafe_allow_html=True)
-    st.title("Login")
-    st.caption("Use your Login ID and password.")
-
-    with st.form("login_form"):
-        login_id = st.text_input("Login ID")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Sign In")
-
-    if submitted:
-        credentials = load_user_credentials(sheet)
-        user_record = credentials.get(login_id.strip(), {})
-        stored_password = user_record.get("password", "")
-
-        if stored_password and hmac.compare_digest(stored_password, password.strip()):
-            st.session_state.authenticated = True
-            st.session_state.user_id = login_id.strip()
-            st.session_state.user_name = user_record.get("member_name", login_id.strip())
-            st.success("Login successful")
-            st.rerun()
-
-        st.error("Invalid Login ID or password")
-
-    return False
-
-
-def generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close):
-    buffer = BytesIO()
-
-    doc = SimpleDocTemplate(buffer)
-    styles = getSampleStyleSheet()
-
-    elements = []
-
-    # Title
-    elements.append(Paragraph("RJ-ROSCA Financial Report", styles['Title']))
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph(f"Month: {month}", styles['Normal']))
-    elements.append(Spacer(1, 20))
-
-    # KPI Section
-    elements.append(Paragraph("Key Metrics", styles['Heading2']))
-    elements.append(Spacer(1, 10))
-
-    kpi_data = [
-        ["Metric", "Value"],
-        ["Total Collection", f"₹{metrics['total_collection']:,.2f}"],
-        ["Total EMI", f"₹{metrics['total_emi']:,.2f}"],
-        ["Loans Disbursed", f"₹{metrics['total_loans']:,.2f}"],
-        ["Loans Cleared", metrics['loan_cleared']],
-        ["Balance", f"₹{metrics['balance_available']:,.2f}"],
-    ]
-
-    kpi_table = Table(kpi_data)
-    kpi_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
-    ]))
-
-    elements.append(kpi_table)
-    elements.append(Spacer(1, 20))
-
-    # Helper function for tables
-    def df_to_table(df, title):
-        elements.append(Paragraph(title, styles['Heading3']))
-        elements.append(Spacer(1, 8))
-
-        data = [df.columns.tolist()] + df.values.tolist()
-        table = Table(data)
-
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
-        ]))
-
-        elements.append(table)
-        elements.append(Spacer(1, 20))
-
-    # Add Tables
-    df_to_table(df_disbursed, "Loans Disbursed")
-    df_to_table(df_closed, "Loans Closed")
-    df_to_table(df_to_close, "Loans To Close")
-
-    doc.build(elements)
-
-    buffer.seek(0)
-    return buffer
-
-# -------------------------------
-# 🚀 MAIN APP
-# -------------------------------
-def main():
-    st.set_page_config(
-        page_title='RJ-ROSCA Dashboard',
-        layout='wide',
-        # page_icon='💸'
-        page_icon='ROSCA.png'
-    )
-
-    apply_styles()
-
-    # -------------------------------
-    # 🔌 CONNECT
-    # -------------------------------
-    client = get_gspread_client()
-    sheet = client.open(SHEET_NAME)
-
-    # -------------------------------
-    # 🔐 LOGIN GATE
-    # -------------------------------
-    if not render_login_page(sheet):
-        st.stop()
-
-    # Detect device
-    screen_width = get_screen_width()
-    mobile = is_mobile(screen_width)
-
-    # Keep logout visible in the main page so mobile users can always access it.
-    auth_col, logout_col = st.columns([0.75, 0.25])
-    with auth_col:
-        st.caption(f"Welcome {st.session_state.get('user_name', st.session_state.user_id)}!")
-    with logout_col:
-        if st.button("Logout", use_container_width=True, key="logout_main"):
-            st.session_state.authenticated = False
-            st.session_state.user_id = ""
-            st.session_state.user_name = ""
-            st.rerun()
-
-    if not mobile:
-        with st.sidebar:
-            st.success(f"Welcome {st.session_state.get('user_name', st.session_state.user_id)}!")
-            if st.button("Logout", key="logout_sidebar"):
-                st.session_state.authenticated = False
-                st.session_state.user_id = ""
-                st.session_state.user_name = ""
-                st.rerun()
-
-    # Title and logo side by side
-    col_title, col_logo = st.columns([0.8, 0.2])
-    with col_title:
-        st.title('💸 RJ-ROSCA Financial Report')
-    with col_logo:
-        st.image("ROSCA.png", width=80)
-
-
-    # -------------------------------
-    # 📊 LOAD DATA
-    # -------------------------------
-    df_main = clean_dataframe(load_main_data(sheet))
-    df_loan = load_loan_data(sheet)
-    user_display_name = st.session_state.get('user_name', st.session_state.get('user_id', ''))
-    df_user_active_loans = get_user_active_loans(df_loan, user_display_name)
-    total_loan_pending = len(df_user_active_loans)
-    total_amount_to_recover = (
-        float(df_user_active_loans["Amount to Pay"].sum())
-        if "Amount to Pay" in df_user_active_loans.columns else 0.0
-    )
-    loan_amount_col = _find_column(df_user_active_loans, ["Loan Amount", "Loan", "Total Loan Amount", "Disbursed Amount"])
-    total_loan_paid = 0.0
-    if loan_amount_col:
-        total_loan_paid = (
-            (df_user_active_loans[loan_amount_col].apply(_to_float) - df_user_active_loans["Amount to Pay"].apply(_to_float))
-            .clip(lower=0)
-            .sum()
-        )
-
-    # -------------------------------
-    # 📅 FILTERS (FANCY UI)
-    # -------------------------------
-    st.markdown("""
         <style>
         .filter-box {
             background: linear-gradient(135deg, #1e88e5, #42a5f5);
@@ -529,72 +45,57 @@ def main():
             border-radius: 10px !important;
         }
         </style>
-    """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
     with st.container():
         st.markdown('<div class="filter-box">', unsafe_allow_html=True)
-        st.markdown('<div class="filter-title">📅 Select Filters</div>', unsafe_allow_html=True)
+        st.markdown('<div class="filter-title"> Select Filters</div>', unsafe_allow_html=True)
 
         col1, col2 = st.columns(2)
 
-        # Year Dropdown
         with col1:
             years = get_year_options(df_main)
-
             if not years:
-                st.error('No year data found.')
-                return
+                st.error("No year data found.")
+                return None, None, None, None
 
             current_year = str(datetime.datetime.now().year)
             default_year_idx = years.index(current_year) if current_year in years else 0
+            year = st.selectbox(" Year", years, index=default_year_idx)
 
-            year = st.selectbox("📆 Year", years, index=default_year_idx)
-
-        # Month Dropdown
         with col2:
             months = [m for m in get_month_options(df_main) if m.endswith(year[-2:])]
-
             if not months:
-                st.error(f'No month data found for year {year}.')
-                return
+                st.error(f"No month data found for year {year}.")
+                return None, None, None, None
 
-            current_month = datetime.datetime.now().strftime('%b-%y')
+            current_month = datetime.datetime.now().strftime("%b-%y")
             next_month_date = datetime.datetime.now() + datetime.timedelta(days=30)
             previous_month_date = datetime.datetime.now() - datetime.timedelta(days=30)
 
-            next_month = next_month_date.strftime('%b-%y')
-            previous_month = previous_month_date.strftime('%b-%y')
+            next_month = next_month_date.strftime("%b-%y")
+            previous_month = previous_month_date.strftime("%b-%y")
 
             if next_month not in months:
                 months = [next_month] + months
 
             default_month_idx = months.index(current_month) if current_month in months else 0
+            month = st.selectbox(" Month", months, index=default_month_idx)
 
-            month = st.selectbox("📅 Month", months, index=default_month_idx)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown('</div>', unsafe_allow_html=True)
+    return month, next_month, previous_month, year
 
-    # -------------------------------
-    # 📊 FILTER DATA
-    # -------------------------------
-    df_month = filter_by_month(df_main, month)
 
-    if df_month.empty:
-        st.warning(f'No data found for {month}')
-        return
-
-    # -------------------------------
-    # 📈 METRICS
-    # -------------------------------
-    metrics = calculate_metrics(df_month)
-
-    df_prev = filter_by_month(df_main, previous_month)
-    previous_month_balance = df_prev['Total Balance'].sum() if not df_prev.empty else 0
-
-    st.info(f"📅 Showing data for: {month}")
-    parsed_metric_month = _parse_month_label(month)
+def _render_key_metrics(mobile, metrics, previous_month_balance, user_display_name, total_loan_pending, total_amount_to_recover, total_loan_paid, month):
+    parsed_metric_month = parse_month_label(month)
     metric_month_label = parsed_metric_month.strftime("%B %y") if parsed_metric_month else month
-    st.subheader(f"📊 Key Metrics - {metric_month_label}")
+
+    st.info(f" Showing data for: {month}")
+    st.subheader(f" Key Metrics - {metric_month_label}")
+
     loan_details_heading = (
         f"#### {user_display_name}' Loan details"
         if user_display_name.lower().endswith("s")
@@ -602,114 +103,240 @@ def main():
     )
 
     if mobile:
-        metric_card("Total Collection", f"₹{metrics['total_collection']:,.2f}", "blue", "💰")
-        metric_card("Total EMI Received", f"₹{metrics['total_emi']:,.2f}", "green", "💵")
-        metric_card("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}", "orange", "🏦")
-        metric_card("Loan Applications Processed", int(metrics['loan_processed']), "purple", "📄")
-        metric_card("Loans Cleared", int(metrics['loan_cleared']), "red", "✅")
-        metric_card("Total Share Amount", f"₹{metrics['total_share']:,.2f}", "teal", "📊")
-        metric_card("Balance Available", f"₹{metrics['balance_available']:,.2f}", "pink", "💳")
-        metric_card("Previous Month Balance", f"₹{previous_month_balance:,.2f}", "indigo", "📅")
+        metric_card("Total Collection", f"{metrics['total_collection']:,.2f}", "blue", "")
+        metric_card("Total EMI Received", f"{metrics['total_emi']:,.2f}", "green", "")
+        metric_card("Total Loans Disbursed", f"{metrics['total_loans']:,.2f}", "orange", "")
+        metric_card("Loan Applications Processed", int(metrics["loan_processed"]), "purple", "")
+        metric_card("Loans Cleared", int(metrics["loan_cleared"]), "red", "")
+        metric_card("Total Share Amount", f"{metrics['total_share']:,.2f}", "teal", "")
+        metric_card("Balance Available", f"{metrics['balance_available']:,.2f}", "pink", "")
+        metric_card("Previous Month Balance", f"{previous_month_balance:,.2f}", "indigo", "")
         st.markdown(loan_details_heading)
-        metric_card("Total Loan Pending", int(total_loan_pending), "purple", "⏳")
-        metric_card("Total Amount to Recover", f"₹{total_amount_to_recover:,.2f}", "orange", "💸")
-        metric_card("Total Loan Paid", f"₹{total_loan_paid:,.2f}", "green", "✅")
+        metric_card("Total Loan Pending", int(total_loan_pending), "purple", "")
+        metric_card("Total Amount to Recover", f"{total_amount_to_recover:,.2f}", "orange", "")
+        metric_card("Total Loan Paid", f"{total_loan_paid:,.2f}", "green", "")
+        return
 
-    else:
-        col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        metric_card("Total Collection", f"{metrics['total_collection']:,.2f}", "blue", "")
+        metric_card("Total Loans Disbursed", f"{metrics['total_loans']:,.2f}", "orange", "")
+    with col2:
+        metric_card("Total EMI Received", f"{metrics['total_emi']:,.2f}", "green", "")
+        metric_card("Loan Applications Processed", int(metrics["loan_processed"]), "purple", "")
+    with col3:
+        metric_card("Balance Available", f"{metrics['balance_available']:,.2f}", "pink", "")
+        metric_card("Loans Cleared", int(metrics["loan_cleared"]), "red", "")
 
-        with col1:
-            metric_card("Total Collection", f"₹{metrics['total_collection']:,.2f}", "blue", "💰")
-            metric_card("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}", "orange", "🏦")
+    st.markdown(loan_details_heading)
+    user_col1, user_col2, user_col3 = st.columns(3)
+    with user_col1:
+        metric_card("Total Loan Pending", int(total_loan_pending), "purple", "")
+    with user_col2:
+        metric_card("Total Loan Paid", f"{total_loan_paid:,.2f}", "green", "")
+    with user_col3:
+        metric_card("Total Amount to Recover", f"{total_amount_to_recover:,.2f}", "orange", "")
 
-        with col2:
-            metric_card("Total EMI Received", f"₹{metrics['total_emi']:,.2f}", "green", "💵")
-            metric_card("Loan Applications Processed", int(metrics['loan_processed']), "purple", "📄")
 
-        with col3:
-            metric_card("Balance Available", f"₹{metrics['balance_available']:,.2f}", "pink", "💳")
-            metric_card("Loans Cleared", int(metrics['loan_cleared']), "red", "✅")
-        st.markdown(loan_details_heading)
+def main():
+    st.set_page_config(page_title="RJ-ROSCA Dashboard", layout="wide", page_icon="ROSCA.png")
+    apply_styles()
 
-        user_col1, user_col2, user_col3 = st.columns(3)
-        with user_col1:
-            metric_card("Total Loan Pending", int(total_loan_pending), "purple", "⏳")
-        with user_col2:
-            metric_card("Total Loan Paid", f"₹{total_loan_paid:,.2f}", "green", "✅")
-        with user_col3:
-            metric_card("Total Amount to Recover", f"₹{total_amount_to_recover:,.2f}", "orange", "💸")
+    client = get_gspread_client()
+    sheet = client.open(SHEET_NAME)
+
+    if not render_login_page(sheet):
+        st.stop()
+
+    mobile = is_mobile(get_screen_width())
+
+    auth_col, logout_col = st.columns([0.75, 0.25])
+    with auth_col:
+        st.caption(f"Welcome {st.session_state.get('user_name', st.session_state.user_id)}!")
+    with logout_col:
+        if st.button("Logout", use_container_width=True, key="logout_main"):
+            st.session_state.authenticated = False
+            st.session_state.user_id = ""
+            st.session_state.user_name = ""
+            st.session_state.user_role = ""
+            st.rerun()
+
+    if not mobile:
+        with st.sidebar:
+            st.success(f"Welcome {st.session_state.get('user_name', st.session_state.user_id)}!")
+            if st.button("Logout", key="logout_sidebar"):
+                st.session_state.authenticated = False
+                st.session_state.user_id = ""
+                st.session_state.user_name = ""
+                st.session_state.user_role = ""
+                st.rerun()
+
+    col_title, col_logo = st.columns([0.8, 0.2])
+    with col_title:
+        st.title(" RJ-ROSCA Financial Report")
+    with col_logo:
+        st.image("ROSCA.png", width=80)
+
+    df_main = clean_dataframe(load_main_data(sheet))
+    df_loan = load_loan_data(sheet)
+
+    user_display_name = st.session_state.get("user_name", st.session_state.get("user_id", ""))
+    df_user_active_loans = get_user_active_loans(df_loan, user_display_name)
+
+    total_loan_pending = len(df_user_active_loans)
+    total_amount_to_recover = float(df_user_active_loans["Amount to Pay"].sum()) if "Amount to Pay" in df_user_active_loans.columns else 0.0
+
+    loan_amount_col = find_column(df_user_active_loans, ["Loan Amount", "Loan", "Total Loan Amount", "Disbursed Amount"])
+    total_loan_paid = 0.0
+    if loan_amount_col and "Amount to Pay" in df_user_active_loans.columns:
+        total_loan_paid = (
+            (df_user_active_loans[loan_amount_col].apply(to_float) - df_user_active_loans["Amount to Pay"].apply(to_float))
+            .clip(lower=0)
+            .sum()
+        )
+
+    month, next_month, previous_month, _ = _render_filters(df_main)
+    if not month:
+        return
+
+    df_month = filter_by_month(df_main, month)
+    if df_month.empty:
+        st.warning(f"No data found for {month}")
+        return
+
+    metrics = calculate_metrics(df_month)
+    df_prev = filter_by_month(df_main, previous_month)
+    previous_month_balance = df_prev["Total Balance"].sum() if not df_prev.empty else 0
+
+    _render_key_metrics(
+        mobile,
+        metrics,
+        previous_month_balance,
+        user_display_name,
+        total_loan_pending,
+        total_amount_to_recover,
+        total_loan_paid,
+        month,
+    )
 
     st.divider()
 
-    # -------------------------------
-    # 👤 USER ACTIVE LOANS
-    # -------------------------------
-    st.subheader("👤 Your Active Loans")
-    st.info(f"{user_display_name} has {len(df_user_active_loans)} active loan(s).")
-    st.dataframe(df_user_active_loans, use_container_width=True)
-
-    # -------------------------------
-    # 💸 LOAN TABLES
-    # -------------------------------
-    # df_disbursed = filter_loan_disbursed(df_loan, next_month)
-    # df_to_close = filter_loan_closed(df_loan, next_month)
-    # df_closed = filter_loan_closed(df_loan, month)
-
-    # 💸 Loans Disbursed → Selected Month
     df_disbursed = filter_loan_disbursed(df_loan, month)
-
-    # ✅ Loans Closed → Selected Month
     df_closed = filter_loan_closed(df_loan, month)
-
-    # ⏳ Loans to Close → Next Month
     df_to_close = filter_loan_closed(df_loan, next_month)
 
+    table_options = {
+        "Your Active Loans": (" Your Active Loans", df_user_active_loans, f"{user_display_name} has {len(df_user_active_loans)} active loan(s)."),
+        f"Loans Disbursed ({month})": (f" Loans Disbursed ({month})", df_disbursed, None),
+        f"Loans Closed ({month})": (f" Loans Closed ({month})", df_closed, None),
+        f"Loans to Close ({next_month})": (f" Loans to Close ({next_month})", df_to_close, None),
+    }
+
+    user_role = st.session_state.get("user_role", "").strip().lower()
+    is_admin = user_role == "admin"
+    team_members = get_team_members(df_loan, user_display_name) if is_admin else []
+
+    if "selected_dashboard_table" not in st.session_state:
+        st.session_state.selected_dashboard_table = None
+    if "selected_team_member" not in st.session_state:
+        st.session_state.selected_team_member = team_members[0] if team_members else None
+
     if mobile:
-        with st.expander(f"💸 Loans Disbursed ({month})"):
-            st.dataframe(df_disbursed, use_container_width=True)
+        st.markdown("### Table Viewer")
+        mobile_options = ["Dashboard Home"] + list(table_options.keys())
+        if is_admin:
+            mobile_options.append("Team Members Loans")
 
-        with st.expander(f"✅ Loans Closed ({month})"):
-            st.dataframe(df_closed, use_container_width=True)
+        selected_mobile_view = st.selectbox(
+            "Choose section",
+            options=mobile_options,
+            key="mobile_table_selector",
+        )
 
-        with st.expander(f"⏳ Loans to Close ({next_month})"):
-            st.dataframe(df_to_close, use_container_width=True)
+        if selected_mobile_view == "Dashboard Home":
+            st.session_state.selected_dashboard_table = None
+        elif selected_mobile_view == "Team Members Loans":
+            st.session_state.selected_dashboard_table = "team_member_viewer"
+        else:
+            st.session_state.selected_dashboard_table = selected_mobile_view
 
-
-
+        if is_admin and st.session_state.selected_dashboard_table == "team_member_viewer":
+            if team_members:
+                current_idx = 0
+                if st.session_state.selected_team_member and st.session_state.selected_team_member in team_members:
+                    current_idx = team_members.index(st.session_state.selected_team_member)
+                st.session_state.selected_team_member = st.selectbox(
+                    "Choose a team member",
+                    options=team_members,
+                    index=current_idx,
+                    key="team_member_selector_mobile",
+                )
+            else:
+                st.warning("No team members found for your account.")
     else:
-        st.subheader(f"💸 Loans Disbursed ({month})")
-        st.dataframe(df_disbursed, use_container_width=True)
+        with st.sidebar:
+            st.markdown("### Table Viewer")
+            st.caption("Tap a section to open it.")
+            if st.button("Dashboard Home", use_container_width=True, key="nav_home"):
+                st.session_state.selected_dashboard_table = None
+            for table_name in table_options.keys():
+                if st.button(table_name, use_container_width=True, key=f"nav_{table_name}"):
+                    st.session_state.selected_dashboard_table = table_name
 
-        st.subheader(f"✅ Loans Closed ({month})")
-        st.dataframe(df_closed, use_container_width=True)
+            if is_admin:
+                st.markdown("---")
+                st.markdown("###  Team Management")
+                st.caption("View your team members' loans.")
+                if st.button("Team Members Loans", use_container_width=True, key="nav_team"):
+                    st.session_state.selected_dashboard_table = "team_member_viewer"
 
-        st.subheader(f"⏳ Loans to Close ({next_month})")
-        st.dataframe(df_to_close, use_container_width=True)
+                if st.session_state.selected_dashboard_table == "team_member_viewer":
+                    if team_members:
+                        st.markdown("#### Select Team Member")
+                        current_idx = 0
+                        if st.session_state.selected_team_member and st.session_state.selected_team_member in team_members:
+                            current_idx = team_members.index(st.session_state.selected_team_member)
+                        st.session_state.selected_team_member = st.selectbox(
+                            "Choose a team member",
+                            options=team_members,
+                            index=current_idx,
+                            key="team_member_selector",
+                        )
+                    else:
+                        st.warning("No team members found for your account.")
 
-    # -------------------------------
-    # 📄 DOWNLOAD PDF
-    # -------------------------------
-    pdf_buffer = generate_pdf(
-        month,
-        metrics,
-        df_disbursed,
-        df_closed,
-        df_to_close
-    )
+    selected_table = st.session_state.selected_dashboard_table
+    if selected_table == "team_member_viewer" and is_admin:
+        selected_member = st.session_state.selected_team_member
+        if selected_member:
+            df_team_member_loans = get_team_member_active_loans(df_loan, user_display_name, selected_member)
+            st.subheader(f" {selected_member}'s Active Loans")
+            st.info(f"Total active loans: {len(df_team_member_loans)}")
+            st.dataframe(df_team_member_loans, use_container_width=True)
+        else:
+            st.info("Please select a team member from the sidebar to view loans.")
+    else:
+        selected_table_config = table_options.get(selected_table)
+        if selected_table_config:
+            table_title, table_df, table_message = selected_table_config
+            st.subheader(table_title)
+            if table_message:
+                st.info(table_message)
+            st.dataframe(table_df, use_container_width=True)
+        else:
+            st.info("Choose a section from the Table Viewer to view it.")
 
+    pdf_buffer = generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close)
     st.download_button(
-        label="📄 Download Report as PDF",
+        label=" Download Report as PDF",
         data=pdf_buffer,
         file_name=f"ROSCA_Report_{month}.pdf",
-        mime="application/pdf"
+        mime="application/pdf",
     )
 
     st.divider()
-    st.caption('Powered by ROSCA Automation | © 2026')
+    st.caption("Powered by ROSCA Automation |  2026")
 
 
-# -------------------------------
-# ▶️ RUN
-# -------------------------------
 if __name__ == "__main__":
     main()
