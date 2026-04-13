@@ -3,19 +3,29 @@ import streamlit.components.v1 as components
 
 
 def get_screen_width():
-    width = components.html(
+    # Try request headers first (works better on Streamlit Cloud/mobile browsers).
+    try:
+        headers = getattr(st.context, "headers", {})
+        viewport_width = headers.get("sec-ch-viewport-width", "")
+        if str(viewport_width).isdigit():
+            return int(viewport_width)
+
+        user_agent = str(headers.get("user-agent", "")).lower()
+        if any(token in user_agent for token in ["android", "iphone", "ipad", "mobile"]):
+            return 390
+    except Exception:
+        pass
+
+    # Fallback for local/dev where request headers may be unavailable.
+    components.html(
         """
         <script>
         const width = window.innerWidth;
-        document.write(width);
         </script>
         """,
         height=0,
     )
-    try:
-        return int(width)
-    except Exception:
-        return 1024
+    return 1024
 
 
 def is_mobile(width):
