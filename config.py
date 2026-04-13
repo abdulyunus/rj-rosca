@@ -6,6 +6,7 @@ LOAN_RANGE = 'A1:H100000'
 
 MAIN_SHEET = 'Main_Calculations'
 LOAN_SHEET = 'loan_waterfall_c2'
+EMI_CUTOFF_DAY = 5
 
 NUMERIC_COLS = [
     'Share Amount for the month', 'EMI received',
