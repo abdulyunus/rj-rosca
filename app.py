@@ -208,6 +208,26 @@ def main():
     if "selected_team_member" not in st.session_state:
         st.session_state.selected_team_member = team_members[0] if team_members else None
 
+    df_month = filter_by_month(df_main, month)
+    if df_month.empty:
+        st.warning(f"No data found for {month}")
+        return
+
+    metrics = calculate_metrics(df_month)
+    df_prev = filter_by_month(df_main, previous_month)
+    previous_month_balance = df_prev["Total Balance"].sum() if not df_prev.empty else 0
+
+    _render_key_metrics(
+        mobile,
+        metrics,
+        previous_month_balance,
+        user_display_name,
+        total_loan_pending,
+        total_amount_to_recover,
+        total_loan_paid,
+        month,
+    )
+
     if mobile:
         st.markdown("### Table Viewer")
         mobile_options = [
@@ -247,28 +267,6 @@ def main():
                 )
             else:
                 st.warning("No team members found for your account.")
-
-        st.divider()
-
-    df_month = filter_by_month(df_main, month)
-    if df_month.empty:
-        st.warning(f"No data found for {month}")
-        return
-
-    metrics = calculate_metrics(df_month)
-    df_prev = filter_by_month(df_main, previous_month)
-    previous_month_balance = df_prev["Total Balance"].sum() if not df_prev.empty else 0
-
-    _render_key_metrics(
-        mobile,
-        metrics,
-        previous_month_balance,
-        user_display_name,
-        total_loan_pending,
-        total_amount_to_recover,
-        total_loan_paid,
-        month,
-    )
 
     st.divider()
 
