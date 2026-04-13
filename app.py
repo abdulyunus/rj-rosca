@@ -171,11 +171,7 @@ def main():
                 st.session_state.user_role = ""
                 st.rerun()
 
-    col_title, col_logo = st.columns([0.8, 0.2])
-    with col_title:
-        st.title(" RJ-ROSCA Financial Report")
-    with col_logo:
-        st.image("ROSCA.png", width=80)
+    st.title(" RJ-ROSCA Financial Report")
 
     df_main = clean_dataframe(load_main_data(sheet))
     df_loan = load_loan_data(sheet)
