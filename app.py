@@ -242,37 +242,77 @@ def main():
         st.session_state.selected_team_member = team_members[0] if team_members else None
 
     if mobile:
-        st.markdown("### Table Viewer")
-        mobile_options = ["Dashboard Home"] + list(table_options.keys())
-        if is_admin:
-            mobile_options.append("Team Members Loans")
+        # Initialize mobile sidebar state
+        if "mobile_sidebar_open" not in st.session_state:
+            st.session_state.mobile_sidebar_open = False
 
-        selected_mobile_view = st.selectbox(
-            "Choose section",
-            options=mobile_options,
-            key="mobile_table_selector",
-        )
+        # Toggle button with arrow icon
+        col_arrow, col_title = st.columns([0.15, 0.85])
+        with col_arrow:
+            arrow = "▼" if st.session_state.mobile_sidebar_open else "▶"
+            if st.button(arrow, key="mobile_toggle_sidebar", use_container_width=True, help="Toggle menu"):
+                st.session_state.mobile_sidebar_open = not st.session_state.mobile_sidebar_open
+        with col_title:
+            st.markdown("### Table Viewer")
 
-        if selected_mobile_view == "Dashboard Home":
-            st.session_state.selected_dashboard_table = None
-        elif selected_mobile_view == "Team Members Loans":
-            st.session_state.selected_dashboard_table = "team_member_viewer"
-        else:
-            st.session_state.selected_dashboard_table = selected_mobile_view
+        # Show sidebar content if open
+        if st.session_state.mobile_sidebar_open:
+            st.markdown(
+                """
+                <style>
+                .mobile-sidebar {
+                    background: linear-gradient(135deg, #f5f5f5, #e8e8e8);
+                    padding: 10px;
+                    border-radius: 10px;
+                    border-left: 4px solid #1e88e5;
+                }
+                .mobile-nav-button {
+                    margin: 5px 0;
+                }
+                </style>
+                <div class="mobile-sidebar">
+                """,
+                unsafe_allow_html=True,
+            )
 
-        if is_admin and st.session_state.selected_dashboard_table == "team_member_viewer":
-            if team_members:
-                current_idx = 0
-                if st.session_state.selected_team_member and st.session_state.selected_team_member in team_members:
-                    current_idx = team_members.index(st.session_state.selected_team_member)
-                st.session_state.selected_team_member = st.selectbox(
-                    "Choose a team member",
-                    options=team_members,
-                    index=current_idx,
-                    key="team_member_selector_mobile",
-                )
-            else:
-                st.warning("No team members found for your account.")
+            # Dashboard Home button
+            if st.button("🏠 Dashboard Home", use_container_width=True, key="mobile_nav_home"):
+                st.session_state.selected_dashboard_table = None
+                st.session_state.mobile_sidebar_open = False
+                st.rerun()
+
+            # Table options buttons
+            for table_name in table_options.keys():
+                if st.button(f"📊 {table_name}", use_container_width=True, key=f"mobile_nav_{table_name}"):
+                    st.session_state.selected_dashboard_table = table_name
+                    st.session_state.mobile_sidebar_open = False
+                    st.rerun()
+
+            # Team Members Loans for admins
+            if is_admin:
+                st.markdown("---")
+                st.markdown("#### Team Management")
+                if st.button("👥 Team Members Loans", use_container_width=True, key="mobile_nav_team"):
+                    st.session_state.selected_dashboard_table = "team_member_viewer"
+                    st.session_state.mobile_sidebar_open = False
+                    st.rerun()
+
+                if st.session_state.selected_dashboard_table == "team_member_viewer":
+                    if team_members:
+                        st.markdown("##### Select Team Member")
+                        current_idx = 0
+                        if st.session_state.selected_team_member and st.session_state.selected_team_member in team_members:
+                            current_idx = team_members.index(st.session_state.selected_team_member)
+                        st.session_state.selected_team_member = st.selectbox(
+                            "Team member",
+                            options=team_members,
+                            index=current_idx,
+                            key="team_member_selector_mobile",
+                        )
+                    else:
+                        st.warning("No team members found for your account.")
+
+            st.markdown("</div>", unsafe_allow_html=True)
     else:
         with st.sidebar:
             st.markdown("### Table Viewer")
