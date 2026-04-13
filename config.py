@@ -1,4 +1,5 @@
 SHEET_NAME = 'RJ_ROSCA_General_July23'
+USER_CREDENTIALS_SHEET = 'user_credentails'
 
 MAIN_RANGE = 'A1:Q100'
 LOAN_RANGE = 'A1:H100000'
