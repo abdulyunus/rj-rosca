@@ -1,9 +1,10 @@
 import streamlit as st
 import datetime
+import hmac
 import streamlit.components.v1 as components
 
 from gsheet_client import get_gspread_client
-from config import SHEET_NAME
+from config import SHEET_NAME, USER_CREDENTIALS_SHEET
 from data_loader import load_main_data, load_loan_data
 from data_processor import clean_dataframe, filter_by_month, filter_loan_closed, filter_loan_disbursed
 from metrics import calculate_metrics
@@ -185,6 +186,83 @@ from reportlab.lib.styles import getSampleStyleSheet
 from io import BytesIO
 
 
+def _find_column(df, candidates):
+    normalized = {str(col).strip().lower(): col for col in df.columns}
+    for name in candidates:
+        key = name.strip().lower()
+        if key in normalized:
+            return normalized[key]
+    return None
+
+
+def load_user_credentials(sheet):
+    try:
+        ws = sheet.worksheet(USER_CREDENTIALS_SHEET)
+        records = ws.get_all_records()
+    except Exception:
+        return {}
+
+    if not records:
+        return {}
+
+    import pandas as pd
+
+    df_users = pd.DataFrame(records)
+    if df_users.empty:
+        return {}
+
+    login_col = _find_column(df_users, ["login_id", "login id", "username", "user_id", "userid", "id"])
+    password_col = _find_column(df_users, ["password", "pass", "pwd"])
+
+    if not login_col or not password_col:
+        return {}
+
+    creds = {}
+    for _, row in df_users.iterrows():
+        login_id = str(row.get(login_col, "")).strip()
+        password = str(row.get(password_col, "")).strip()
+        if login_id and password:
+            creds[login_id] = password
+    return creds
+
+
+def render_login_page(sheet):
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+        st.session_state.user_id = ""
+
+    if st.session_state.authenticated:
+        with st.sidebar:
+            st.success(f"Logged in as: {st.session_state.user_id}")
+            if st.button("Logout"):
+                st.session_state.authenticated = False
+                st.session_state.user_id = ""
+                st.rerun()
+        return True
+
+    st.title("Login")
+    st.caption("Use your Login ID and password from the user_credentails Google Sheet.")
+
+    with st.form("login_form"):
+        login_id = st.text_input("Login ID")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign In")
+
+    if submitted:
+        credentials = load_user_credentials(sheet)
+        stored_password = credentials.get(login_id.strip(), "")
+
+        if stored_password and hmac.compare_digest(stored_password, password.strip()):
+            st.session_state.authenticated = True
+            st.session_state.user_id = login_id.strip()
+            st.success("Login successful")
+            st.rerun()
+
+        st.error("Invalid Login ID or password")
+
+    return False
+
+
 def generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close):
     buffer = BytesIO()
 
@@ -262,6 +340,18 @@ def main():
 
     apply_styles()
 
+    # -------------------------------
+    # 🔌 CONNECT
+    # -------------------------------
+    client = get_gspread_client()
+    sheet = client.open(SHEET_NAME)
+
+    # -------------------------------
+    # 🔐 LOGIN GATE
+    # -------------------------------
+    if not render_login_page(sheet):
+        st.stop()
+
     # Detect device
     screen_width = get_screen_width()
     mobile = is_mobile(screen_width)
@@ -273,12 +363,6 @@ def main():
     with col_logo:
         st.image("ROSCA.png", width=80)
 
-
-    # -------------------------------
-    # 🔌 CONNECT
-    # -------------------------------
-    client = get_gspread_client()
-    sheet = client.open(SHEET_NAME)
 
     # -------------------------------
     # 📊 LOAD DATA
