@@ -139,7 +139,7 @@ def _render_key_metrics(mobile, metrics, previous_month_balance, user_display_na
 
 
 def main():
-    st.set_page_config(page_title="RJ-ROSCA Dashboard", layout="wide", page_icon="ROSCA.png")
+    st.set_page_config(page_title="RJ-ROSCA Dashboard", layout="wide")
     apply_styles()
 
     client = get_gspread_client()
