@@ -50,7 +50,7 @@ from ui import (
 def main():
     """Main dashboard application."""
     st.set_page_config(
-        page_title="RJ-ROSCA Dashboard",
+        page_title="ROSCA",
         layout="wide",
         initial_sidebar_state="expanded",
     )
