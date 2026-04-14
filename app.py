@@ -146,18 +146,37 @@ def main():
     if not render_login_page(sheet):
         st.stop()
 
+    # Handle mobile logout triggered via query param
+    if st.query_params.get("action") == "logout":
+        st.session_state.authenticated = False
+        st.session_state.user_id = ""
+        st.session_state.user_name = ""
+        st.session_state.user_role = ""
+        st.query_params.clear()
+        st.rerun()
+
     mobile = is_mobile(get_screen_width())
 
     if mobile:
-        _, logout_col = st.columns([5, 2])
-        with logout_col:
-            if st.button("Logout", key="logout_main", use_container_width=True):
-                st.session_state.authenticated = False
-                st.session_state.user_id = ""
-                st.session_state.user_name = ""
-                st.session_state.user_role = ""
-                st.rerun()
-        st.markdown(f"**Welcome {st.session_state.get('user_name', st.session_state.user_id)}!**")
+        user_name = st.session_state.get("user_name", st.session_state.user_id)
+        st.markdown(
+            f"""
+            <div style="display:flex; justify-content:space-between; align-items:center;
+                        padding:4px 0; margin-bottom:6px;">
+                <span style="font-weight:600; font-size:15px; color:#1a1a1a;">
+                    Welcome {user_name}!
+                </span>
+                <a href="?action=logout" target="_self" style="
+                    background:linear-gradient(135deg,#ef5350,#c62828);
+                    color:white; padding:6px 16px; border-radius:8px;
+                    text-decoration:none; font-size:13px; font-weight:600;
+                    box-shadow:0 2px 6px rgba(0,0,0,0.2);">
+                    Logout
+                </a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     if not mobile:
         with st.sidebar:
