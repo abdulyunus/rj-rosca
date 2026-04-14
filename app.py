@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from auth import render_login_page
-from config import SHEET_NAME
+from config import EMI_CUTOFF_DAY, SHEET_NAME, USER_CREDENTIALS_SHEET
 from data_loader import load_main_data, load_loan_data
 from data_processor import clean_dataframe, filter_by_month, filter_loan_closed, filter_loan_disbursed
 from gsheet_client import get_gspread_client
@@ -13,6 +13,7 @@ from loan_services import (
     get_team_member_active_loans,
     get_team_members,
     get_user_active_loans,
+    normalize_member_name,
     parse_month_label,
     to_float,
 )
@@ -117,6 +118,115 @@ def _render_loan_donut(total_loan_paid, total_amount_to_recover, total_loan_pend
         legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5),
     )
     st.plotly_chart(fig, use_container_width=True)
+
+
+def _get_user_monthly_share_contribution(sheet, user_id, user_display_name):
+    try:
+        credentials_sheet = sheet.worksheet(USER_CREDENTIALS_SHEET)
+        records = credentials_sheet.get_all_records()
+    except Exception:
+        return 0.0
+
+    if not records:
+        return 0.0
+
+    import pandas as pd
+
+    df_users = pd.DataFrame(records)
+    if df_users.empty:
+        return 0.0
+
+    login_col = find_column(df_users, ["login_id", "login id", "username", "user_id", "userid", "id"])
+    member_name_col = find_column(df_users, ["member_name", "member name", "name", "full_name", "full name"])
+    units_col = find_column(df_users, ["units", "unit", "no of units"])
+    unit_cost_col = find_column(df_users, ["unit_cost", "unit cost", "unitcost"])
+
+    if not units_col or not unit_cost_col:
+        return 0.0
+
+    matched_row = None
+
+    if login_col:
+        login_matches = df_users[df_users[login_col].astype(str).str.strip() == str(user_id).strip()]
+        if not login_matches.empty:
+            matched_row = login_matches.iloc[0]
+
+    if matched_row is None and member_name_col:
+        user_key = normalize_member_name(user_display_name)
+        name_matches = df_users[df_users[member_name_col].apply(normalize_member_name) == user_key]
+        if not name_matches.empty:
+            matched_row = name_matches.iloc[0]
+
+    if matched_row is None:
+        return 0.0
+
+    units = to_float(matched_row.get(units_col, 0))
+    unit_cost = to_float(matched_row.get(unit_cost_col, 0))
+    return float(units * unit_cost)
+
+
+def _get_next_month_monthly_emi(df_user_active_loans):
+    if df_user_active_loans.empty:
+        return 0.0
+
+    if "Amount to Pay" not in df_user_active_loans.columns or "EMI Remaining" not in df_user_active_loans.columns:
+        return 0.0
+
+    monthly_emi = 0.0
+    for _, row in df_user_active_loans.iterrows():
+        amount_to_pay = to_float(row.get("Amount to Pay", 0))
+        emi_remaining = to_float(row.get("EMI Remaining", 0))
+        if emi_remaining > 0:
+            monthly_emi += amount_to_pay / emi_remaining
+
+    return float(monthly_emi)
+
+
+def _get_upcoming_payment_month_label():
+    today = datetime.date.today()
+    if today.day > EMI_CUTOFF_DAY:
+        if today.month == 12:
+            target_date = datetime.date(today.year + 1, 1, 1)
+        else:
+            target_date = datetime.date(today.year, today.month + 1, 1)
+    else:
+        target_date = datetime.date(today.year, today.month, 1)
+    return target_date.strftime("%B %Y")
+
+
+def _render_upcoming_payment_summary(monthly_share_contribution, monthly_emi):
+    upcoming_payment_month = _get_upcoming_payment_month_label()
+    total_next_month_payment = monthly_share_contribution + monthly_emi
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(135deg, #0f766e, #0ea5e9);
+            border-radius: 18px;
+            padding: 18px;
+            margin: 18px 0 10px 0;
+            color: white;
+            box-shadow: 0 10px 24px rgba(14, 165, 233, 0.18);
+        ">
+            <div style="font-size: 14px; font-weight: 700; opacity: 0.92; letter-spacing: 0.03em;">
+                Upcoming Payment Summary - {upcoming_payment_month}
+            </div>
+            <div style="font-size: 30px; font-weight: 800; margin-top: 14px; line-height: 1.1;">
+                ₹{total_next_month_payment:,.2f}
+            </div>
+            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:14px;">
+                <div style="flex:1; min-width:180px; background:rgba(255,255,255,0.14); border-radius:12px; padding:12px;">
+                    <div style="font-size:12px; opacity:0.9;">Monthly Share Contribution</div>
+                    <div style="font-size:20px; font-weight:700; margin-top:4px;">₹{monthly_share_contribution:,.2f}</div>
+                </div>
+                <div style="flex:1; min-width:180px; background:rgba(255,255,255,0.14); border-radius:12px; padding:12px;">
+                    <div style="font-size:12px; opacity:0.9;">Monthly EMI</div>
+                    <div style="font-size:20px; font-weight:700; margin-top:4px;">₹{monthly_emi:,.2f}</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _render_key_metrics(mobile, metrics, previous_month_balance, user_display_name, total_loan_pending, total_amount_to_recover, total_loan_paid, month):
@@ -248,6 +358,13 @@ def main():
     if not month:
         return
 
+    monthly_share_contribution = _get_user_monthly_share_contribution(
+        sheet,
+        st.session_state.get("user_id", ""),
+        user_display_name,
+    )
+    monthly_emi = _get_next_month_monthly_emi(df_user_active_loans)
+
     user_role = st.session_state.get("user_role", "").strip().lower()
     is_admin = user_role == "admin"
     team_members = get_team_members(df_loan, user_display_name) if is_admin else []
@@ -276,6 +393,8 @@ def main():
         total_loan_paid,
         month,
     )
+
+    _render_upcoming_payment_summary(monthly_share_contribution, monthly_emi)
 
     if mobile:
         st.markdown("### Table Viewer")
