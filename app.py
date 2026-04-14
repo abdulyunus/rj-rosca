@@ -52,7 +52,7 @@ def main():
     st.set_page_config(
         page_title="RJ-ROSCA Dashboard",
         layout="wide",
-        initial_sidebar_state="collapsed",
+        initial_sidebar_state="expanded",
     )
     apply_styles()
     mobile = is_mobile(get_screen_width())
