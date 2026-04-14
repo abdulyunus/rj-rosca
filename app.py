@@ -149,9 +149,9 @@ def main():
     mobile = is_mobile(get_screen_width())
 
     if mobile:
-        logout_col, _ = st.columns([0.35, 0.65])
+        logout_col, _ = st.columns([1, 6])
         with logout_col:
-            if st.button("Logout", use_container_width=True, key="logout_main"):
+            if st.button("Logout", key="logout_main"):
                 st.session_state.authenticated = False
                 st.session_state.user_id = ""
                 st.session_state.user_name = ""
