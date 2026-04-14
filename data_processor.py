@@ -1,6 +1,6 @@
 import pandas as pd
 from datetime import datetime
-from config import NUMERIC_COLS
+from config import NUMERIC_COLS, EMI_CUTOFF_DAY
 
 def clean_dataframe(df):
     if df.empty:
@@ -29,12 +29,20 @@ def filter_loan_disbursed(df, month):
 
 
 def filter_loan_requirements_current_and_future(df):
-    """Keep only rows where the month column (col A) is >= the current calendar month."""
+    """Keep only rows where the month column (col A) is >= the current calendar month.
+    If today is past EMI_CUTOFF_DAY, the current month is excluded (show next month onwards)."""
     if df.empty:
         return df
 
     month_col = df.columns[0]
-    current = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now()
+    cutoff = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # If past the cutoff day, advance the threshold to next month
+    if today.day > EMI_CUTOFF_DAY:
+        if cutoff.month == 12:
+            cutoff = cutoff.replace(year=cutoff.year + 1, month=1)
+        else:
+            cutoff = cutoff.replace(month=cutoff.month + 1)
 
     formats = ["%b-%y", "%b-%Y", "%B-%y", "%B-%Y", "%b %y", "%b %Y", "%B %y", "%B %Y",
                "%Y-%m", "%m/%Y", "%m-%Y"]
@@ -51,5 +59,5 @@ def filter_loan_requirements_current_and_future(df):
         return None
 
     parsed = df[month_col].apply(parse_month)
-    mask = parsed.apply(lambda d: d is not None and d >= current)
+    mask = parsed.apply(lambda d: d is not None and d >= cutoff)
     return df[mask].reset_index(drop=True)
