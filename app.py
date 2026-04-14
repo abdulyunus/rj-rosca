@@ -1,5 +1,6 @@
 import datetime
 
+import plotly.graph_objects as go
 import streamlit as st
 
 from auth import render_login_page
@@ -88,6 +89,36 @@ def _render_filters(df_main):
     return month, next_month, previous_month, year
 
 
+def _render_loan_donut(total_loan_paid, total_amount_to_recover, total_loan_pending):
+    labels = ["Loan Paid", "Amount to Recover"]
+    values = [max(total_loan_paid, 0), max(total_amount_to_recover, 0)]
+    colors = ["#2e7d32", "#ef6c00"]
+
+    fig = go.Figure(go.Pie(
+        labels=labels,
+        values=values,
+        hole=0.6,
+        marker=dict(colors=colors),
+        textinfo="label+percent",
+        hovertemplate="%{label}: %{value:,.2f}<extra></extra>",
+    ))
+    fig.update_layout(
+        annotations=[dict(
+            text=f"<b>Pending</b><br>{int(total_loan_pending)}",
+            x=0.5, y=0.5,
+            font=dict(size=16, color="#1a1a1a"),
+            showarrow=False,
+        )],
+        showlegend=True,
+        margin=dict(t=30, b=10, l=10, r=10),
+        height=300,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def _render_key_metrics(mobile, metrics, previous_month_balance, user_display_name, total_loan_pending, total_amount_to_recover, total_loan_paid, month):
     parsed_metric_month = parse_month_label(month)
     metric_month_label = parsed_metric_month.strftime("%B %y") if parsed_metric_month else month
@@ -113,6 +144,7 @@ def _render_key_metrics(mobile, metrics, previous_month_balance, user_display_na
         metric_card("Total Loan Pending", int(total_loan_pending), "purple", "")
         metric_card("Total Amount to Recover", f"{total_amount_to_recover:,.2f}", "orange", "")
         metric_card("Total Loan Paid", f"{total_loan_paid:,.2f}", "green", "")
+        _render_loan_donut(total_loan_paid, total_amount_to_recover, total_loan_pending)
         return
 
     col1, col2, col3 = st.columns(3)
@@ -134,6 +166,7 @@ def _render_key_metrics(mobile, metrics, previous_month_balance, user_display_na
         metric_card("Total Loan Paid", f"{total_loan_paid:,.2f}", "green", "")
     with user_col3:
         metric_card("Total Amount to Recover", f"{total_amount_to_recover:,.2f}", "orange", "")
+    _render_loan_donut(total_loan_paid, total_amount_to_recover, total_loan_pending)
 
 
 def main():
