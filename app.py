@@ -52,7 +52,7 @@ def main():
     st.set_page_config(
         page_title="RJ-ROSCA Dashboard",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="collapsed",
     )
     apply_styles()
     mobile = is_mobile(get_screen_width())
@@ -126,7 +126,7 @@ def main():
     user_role = st.session_state.get("user_role", "").strip().lower()
     is_admin = user_role == "admin"
     upcoming_payment_month = get_upcoming_payment_month_label()
-    upcoming_team_collection_label = f"Upcoming Team Collection - {upcoming_payment_month}"
+    upcoming_team_collection_label = "Upcoming Team Collection"
 
     # Get logged-in user's team lead
     current_team_lead = get_logged_in_team_lead(
@@ -136,7 +136,7 @@ def main():
     )
 
     # Build overall collection summary (all team leads with their collections) first
-    overall_collection_label = f"Overall Collection Summary - {upcoming_payment_month}"
+    overall_collection_label = "Overall Collection Summary"
     
     # Prepare credentials helpers for collection builder
     credentials_helpers = {
