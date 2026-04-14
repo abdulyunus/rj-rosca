@@ -5,7 +5,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
-def generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close, df_team_upcoming_collection=None):
+def generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close, df_team_upcoming_collection=None, df_overall_collection=None):
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(buffer)
@@ -77,6 +77,13 @@ def generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close, df_team_u
             if column_name in pdf_team_collection.columns:
                 pdf_team_collection[column_name] = pdf_team_collection[column_name].map(lambda value: f"₹{float(value):,.2f}")
         df_to_table(pdf_team_collection, "Upcoming Team Collection")
+
+    if df_overall_collection is not None and not df_overall_collection.empty:
+        pdf_overall_collection = df_overall_collection.copy()
+        for column_name in ["Monthly Share", "Monthly EMI", "Total"]:
+            if column_name in pdf_overall_collection.columns:
+                pdf_overall_collection[column_name] = pdf_overall_collection[column_name].map(lambda value: f"₹{float(value):,.2f}" if isinstance(value, str) and value.startswith("₹") else f"₹{float(value):,.2f}")
+        df_to_table(pdf_overall_collection, "Overall Collection Summary")
 
     doc.build(elements)
 
