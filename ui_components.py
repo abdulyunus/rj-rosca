@@ -83,11 +83,11 @@ def apply_styles():
 
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
-        header {visibility: visible;}
+        header {visibility: hidden;}
 
-        [data-testid="stHeader"] { display: block; }
-        [data-testid="stToolbar"] { display: block !important; }
-        [data-testid="collapsedControl"] { display: flex !important; }
+        [data-testid="stHeader"] { display: none; }
+        [data-testid="stToolbar"] { display: none !important; }
+        [data-testid="collapsedControl"] { display: none !important; }
         [data-testid="stDecoration"] { display: none !important; }
         [data-testid="stStatusWidget"] { display: none !important; }
 
