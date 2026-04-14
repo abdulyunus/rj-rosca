@@ -64,13 +64,45 @@ def render_login_page(sheet):
             st.session_state.user_name = st.session_state.user_id
         return True
 
-    _, logo_col, _ = st.columns([1, 1, 1])
-    with logo_col:
-        st.image("ROSCA.png", width=110)
+    st.markdown(
+        """
+        <style>
+        section.main > div.block-container {
+            padding-top: 0.35rem;
+        }
 
-    st.markdown("<h2 style='text-align:center;'>Welcome to RJ ROSCA!</h2>", unsafe_allow_html=True)
-    st.title("Login")
-    st.caption("Use your Login ID and password.")
+        div[data-testid="stForm"] {
+            max-width: 420px;
+            margin: 0 auto;
+            margin-top: 0.2rem;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        div[data-testid="stImage"] {
+            margin-bottom: 0.15rem;
+        }
+
+        @media (max-width: 768px) {
+            section.main > div.block-container {
+                padding-top: 0.5rem;
+            }
+
+            div[data-testid="stForm"] {
+                max-width: 100%;
+                padding: 0;
+                background: transparent;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<h2 style='text-align:center; margin: 0.1rem 0 0.2rem 0;'>Welcome to RJ ROSCA!</h2>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center; margin: 0.1rem 0;'>Login</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; margin: 0 0 0.35rem 0;'>Use your Login ID and password.</p>", unsafe_allow_html=True)
 
     with st.form("login_form"):
         login_id = st.text_input("Login ID")
