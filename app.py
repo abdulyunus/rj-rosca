@@ -63,11 +63,29 @@ def main():
     if not render_login_page(sheet):
         return
 
+    if st.query_params.get("action") == "logout":
+        st.session_state.authenticated = False
+        st.session_state.user_id = ""
+        st.session_state.user_name = ""
+        st.session_state.user_role = ""
+        st.query_params.clear()
+        st.rerun()
+
     df_main = clean_dataframe(load_main_data(sheet))
     df_loan = load_loan_data(sheet)
     credentials_df = load_user_credentials_df(sheet)
 
     user_display_name = st.session_state.get("user_name", st.session_state.get("user_id", ""))
+    st.markdown(
+        f"""
+        <div class="welcome-banner">
+            <span class="welcome-text">Welcome {user_display_name}!</span>
+            <a class="welcome-logout" href="?action=logout" target="_self">Logout</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     df_user_active_loans = get_user_active_loans(df_loan, user_display_name)
 
     total_loan_pending = len(df_user_active_loans)
