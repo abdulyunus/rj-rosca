@@ -1,4 +1,5 @@
 import hmac
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -100,14 +101,26 @@ def render_login_page(sheet):
         unsafe_allow_html=True,
     )
 
-    st.markdown("<h2 style='text-align:center; margin: 0.1rem 0 0.2rem 0;'>Welcome to RJ ROSCA!</h2>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align:center; margin: 0.1rem 0;'>Login</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center; margin: 0 0 0.35rem 0;'>Use your Login ID and password.</p>", unsafe_allow_html=True)
+    logo_path = Path(__file__).resolve().parent / "ROSCA.png"
+    logo_width = 96
 
     with st.form("login_form"):
+        if logo_path.exists():
+            logo_left, logo_center, logo_right = st.columns([1, 1, 1])
+            with logo_center:
+                st.image(str(logo_path), width=logo_width)
+
+        st.markdown("<h2 style='text-align:center; margin: 0.1rem 0 0.2rem 0;'>Welcome to RJ ROSCA!</h2>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align:center; margin: 0.1rem 0;'>Login</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; margin: 0 0 0.35rem 0;'>Use your Login ID and password.</p>", unsafe_allow_html=True)
+
         login_id = st.text_input("Login ID")
         password = st.text_input("Password", type="password")
         submitted = st.form_submit_button("Sign In")
+        st.markdown(
+            "<p style='text-align:center; margin: 0.55rem 0 0 0; color:#1e88e5;'>Contact your lead to get the user id and password.</p>",
+            unsafe_allow_html=True,
+        )
 
     if submitted:
         credentials = load_user_credentials(sheet)
