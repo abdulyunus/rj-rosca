@@ -27,10 +27,10 @@ def _render_filters(df_main):
         <style>
         .filter-box {
             background: linear-gradient(135deg, #1e88e5, #42a5f5);
-            padding: 15px;
+            padding: 12px;
             border-radius: 15px;
             color: white;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             box-shadow: 0px 4px 10px rgba(0,0,0,0.2);
         }
 
@@ -51,7 +51,6 @@ def _render_filters(df_main):
 
     with st.container():
         st.markdown('<div class="filter-box">', unsafe_allow_html=True)
-        st.markdown('<div class="filter-title"> Select Filters</div>', unsafe_allow_html=True)
 
         col1, col2 = st.columns(2)
 
@@ -63,7 +62,7 @@ def _render_filters(df_main):
 
             current_year = str(datetime.datetime.now().year)
             default_year_idx = years.index(current_year) if current_year in years else 0
-            year = st.selectbox(" Year", years, index=default_year_idx)
+            year = st.selectbox("Year", years, index=default_year_idx)
 
         with col2:
             months = [m for m in get_month_options(df_main) if m.endswith(year[-2:])]
@@ -82,7 +81,7 @@ def _render_filters(df_main):
                 months = [next_month] + months
 
             default_month_idx = months.index(current_month) if current_month in months else 0
-            month = st.selectbox(" Month", months, index=default_month_idx)
+            month = st.selectbox("Month", months, index=default_month_idx)
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -93,7 +92,6 @@ def _render_key_metrics(mobile, metrics, previous_month_balance, user_display_na
     parsed_metric_month = parse_month_label(month)
     metric_month_label = parsed_metric_month.strftime("%B %y") if parsed_metric_month else month
 
-    st.info(f" Showing data for: {month}")
     st.subheader(f" Key Metrics - {metric_month_label}")
 
     loan_details_heading = (
@@ -150,16 +148,15 @@ def main():
 
     mobile = is_mobile(get_screen_width())
 
-    auth_col, logout_col = st.columns([0.75, 0.25])
-    with auth_col:
-        st.caption(f"Welcome {st.session_state.get('user_name', st.session_state.user_id)}!")
-    with logout_col:
-        if st.button("Logout", use_container_width=True, key="logout_main"):
-            st.session_state.authenticated = False
-            st.session_state.user_id = ""
-            st.session_state.user_name = ""
-            st.session_state.user_role = ""
-            st.rerun()
+    if mobile:
+        logout_col, _ = st.columns([0.35, 0.65])
+        with logout_col:
+            if st.button("Logout", use_container_width=True, key="logout_main"):
+                st.session_state.authenticated = False
+                st.session_state.user_id = ""
+                st.session_state.user_name = ""
+                st.session_state.user_role = ""
+                st.rerun()
 
     if not mobile:
         with st.sidebar:
@@ -171,7 +168,10 @@ def main():
                 st.session_state.user_role = ""
                 st.rerun()
 
-    st.title(" RJ-ROSCA Financial Report")
+    st.title("RJ-ROSCA Financial Report")
+
+    if not mobile:
+        st.caption(f"Welcome {st.session_state.get('user_name', st.session_state.user_id)}!")
 
     df_main = clean_dataframe(load_main_data(sheet))
     df_loan = load_loan_data(sheet)
