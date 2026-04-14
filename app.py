@@ -4,7 +4,6 @@ Modularized version with separated concerns.
 """
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 from auth import render_login_page
 from collection import (
@@ -194,50 +193,6 @@ def main():
 
     render_upcoming_payment_summary(monthly_share_contribution, monthly_emi)
 
-    if mobile:
-        st.markdown("### Table Viewer")
-        mobile_options = [
-            "Your Active Loans",
-            f"Loans Disbursed ({month})",
-            f"Loans Closed ({month})",
-            f"Loans to Close ({next_month})",
-        ]
-        if is_admin:
-            mobile_options.append("Team Members Loans")
-            mobile_options.append(upcoming_team_collection_label)
-            mobile_options.append(overall_collection_label)
-
-        selected_mobile_view = st.selectbox(
-            "Choose section",
-            options=mobile_options,
-            key="mobile_table_selector_top",
-            help="Select the table section to display",
-        )
-
-        if selected_mobile_view == "Team Members Loans":
-            st.session_state.selected_dashboard_table = "team_member_viewer"
-        elif selected_mobile_view == upcoming_team_collection_label:
-            st.session_state.selected_dashboard_table = "team_upcoming_collection"
-        else:
-            st.session_state.selected_dashboard_table = selected_mobile_view
-
-        if is_admin and st.session_state.selected_dashboard_table == "team_member_viewer":
-            if team_members:
-                current_idx = 0
-                if (
-                    st.session_state.selected_team_member
-                    and st.session_state.selected_team_member in team_members
-                ):
-                    current_idx = team_members.index(st.session_state.selected_team_member)
-                st.session_state.selected_team_member = st.selectbox(
-                    "Choose a team member",
-                    options=team_members,
-                    index=current_idx,
-                    key="team_member_selector_mobile_top",
-                )
-            else:
-                st.warning("No team members found for your account.")
-
     st.divider()
 
     df_disbursed = filter_loan_disbursed(df_loan, month)
@@ -255,76 +210,61 @@ def main():
         f"Loans to Close ({next_month})": (f" Loans to Close ({next_month})", df_to_close, None),
     }
 
-    if not mobile:
-        with st.sidebar:
-            st.markdown("### Table Viewer")
-            st.caption("Tap a section to open it.")
-            if st.button("Dashboard Home", use_container_width=True, key="nav_home"):
-                st.session_state.selected_dashboard_table = None
-                st.session_state.auto_collapse_sidebar = True
-            for table_name in table_options.keys():
-                if st.button(table_name, use_container_width=True, key=f"nav_{table_name}"):
-                    st.session_state.selected_dashboard_table = table_name
-                    st.session_state.auto_collapse_sidebar = True
+    st.markdown("### Table Viewer")
+    viewer_options = [
+        "Your Active Loans",
+        f"Loans Disbursed ({month})",
+        f"Loans Closed ({month})",
+        f"Loans to Close ({next_month})",
+    ]
+    if is_admin:
+        viewer_options.extend([
+            "Team Members Loans",
+            upcoming_team_collection_label,
+            overall_collection_label,
+        ])
 
-            if is_admin:
-                st.markdown("---")
-                st.markdown("###  Team Management")
-                st.caption("View your team members' loans.")
-                if st.button(
-                    "Team Members Loans", use_container_width=True, key="nav_team"
-                ):
-                    st.session_state.selected_dashboard_table = "team_member_viewer"
-                    st.session_state.auto_collapse_sidebar = True
-                if st.button(
-                    upcoming_team_collection_label,
-                    use_container_width=True,
-                    key="nav_team_collection",
-                ):
-                    st.session_state.selected_dashboard_table = "team_upcoming_collection"
-                    st.session_state.auto_collapse_sidebar = True
-                if st.button(
-                    overall_collection_label,
-                    use_container_width=True,
-                    key="nav_overall_collection",
-                ):
-                    st.session_state.selected_dashboard_table = overall_collection_label
-                    st.session_state.auto_collapse_sidebar = True
+    selected_table_state = st.session_state.selected_dashboard_table
+    if selected_table_state == "team_member_viewer":
+        selected_view_label = "Team Members Loans"
+    elif selected_table_state == "team_upcoming_collection":
+        selected_view_label = upcoming_team_collection_label
+    elif selected_table_state in viewer_options:
+        selected_view_label = selected_table_state
+    else:
+        selected_view_label = viewer_options[0]
 
-                if st.session_state.selected_dashboard_table == "team_member_viewer":
-                    if team_members:
-                        st.markdown("#### Select Team Member")
-                        current_idx = 0
-                        if (
-                            st.session_state.selected_team_member
-                            and st.session_state.selected_team_member in team_members
-                        ):
-                            current_idx = team_members.index(
-                                st.session_state.selected_team_member
-                            )
-                        st.session_state.selected_team_member = st.selectbox(
-                            "Choose a team member",
-                            options=team_members,
-                            index=current_idx,
-                            key="team_member_selector",
-                        )
-                    else:
-                        st.warning("No team members found for your account.")
+    selected_view = st.selectbox(
+        "Choose section",
+        options=viewer_options,
+        index=viewer_options.index(selected_view_label),
+        key="table_selector_main",
+        help="Select the table section to display",
+    )
 
-    if st.session_state.get("auto_collapse_sidebar", False) and not mobile:
-        components.html(
-            """
-            <script>
-            const collapseButton = window.parent.document.querySelector('[data-testid="collapsedControl"] button')
-                || window.parent.document.querySelector('[data-testid="collapsedControl"]');
-            if (collapseButton) {
-                collapseButton.click();
-            }
-            </script>
-            """,
-            height=0,
-        )
-        st.session_state.auto_collapse_sidebar = False
+    if selected_view == "Team Members Loans":
+        st.session_state.selected_dashboard_table = "team_member_viewer"
+    elif selected_view == upcoming_team_collection_label:
+        st.session_state.selected_dashboard_table = "team_upcoming_collection"
+    else:
+        st.session_state.selected_dashboard_table = selected_view
+
+    if is_admin and st.session_state.selected_dashboard_table == "team_member_viewer":
+        if team_members:
+            current_idx = 0
+            if (
+                st.session_state.selected_team_member
+                and st.session_state.selected_team_member in team_members
+            ):
+                current_idx = team_members.index(st.session_state.selected_team_member)
+            st.session_state.selected_team_member = st.selectbox(
+                "Choose a team member",
+                options=team_members,
+                index=current_idx,
+                key="team_member_selector_main",
+            )
+        else:
+            st.warning("No team members found for your account.")
 
     selected_table = st.session_state.selected_dashboard_table
     restricted_tables = {
