@@ -104,8 +104,8 @@ def apply_styles():
 
         .welcome-text {
             font-size: 18px;
-            font-weight: 700;
-            color: #1a1a1a;
+            font-weight: 400;
+            color: #1e88e5;
         }
 
         .welcome-logout {
