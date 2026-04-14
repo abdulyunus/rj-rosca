@@ -149,9 +149,11 @@ def main():
     mobile = is_mobile(get_screen_width())
 
     if mobile:
-        logout_col, _ = st.columns([1, 6])
+        welcome_col, _, logout_col = st.columns([4, 1, 2])
+        with welcome_col:
+            st.caption(f"Welcome {st.session_state.get('user_name', st.session_state.user_id)}!")
         with logout_col:
-            if st.button("Logout", key="logout_main"):
+            if st.button("Logout", key="logout_main", use_container_width=True):
                 st.session_state.authenticated = False
                 st.session_state.user_id = ""
                 st.session_state.user_name = ""
@@ -328,7 +330,7 @@ def main():
                 st.info(table_message)
             st.dataframe(table_df, use_container_width=True)
         else:
-            st.info("Choose a section from the Table Viewer to view it.")
+            pass
 
     pdf_buffer = generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close)
     st.download_button(
