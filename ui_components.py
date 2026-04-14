@@ -37,7 +37,6 @@ def apply_styles():
         """
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="theme-color" content="#1976d2">
-        <link rel="apple-touch-icon" href="ROSCA.png">
         """,
         unsafe_allow_html=True,
     )
@@ -122,10 +121,6 @@ def apply_styles():
 
             h1, h2, h3 {
                 font-size: 1.2rem !important;
-            }
-
-            button {
-                width: 100% !important;
             }
 
             .metric-card:hover {
