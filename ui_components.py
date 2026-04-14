@@ -155,10 +155,10 @@ def apply_styles():
         }
 
         @media (max-width: 768px) {
-            header {visibility: hidden;}
-            [data-testid="stHeader"] { display: none; }
-            [data-testid="stToolbar"] { display: none !important; }
-            [data-testid="collapsedControl"] { display: none !important; }
+            header {visibility: visible;}
+            [data-testid="stHeader"] { display: block; }
+            [data-testid="stToolbar"] { display: block !important; }
+            [data-testid="collapsedControl"] { display: flex !important; }
 
             .block-container {
                 padding: 0.5rem !important;
