@@ -23,12 +23,13 @@ from credentials import (
     include_member,
     load_user_credentials_df,
 )
-from data_loader import load_loan_data, load_main_data
+from data_loader import load_loan_data, load_loan_requirements_data, load_main_data
 from data_processor import (
     clean_dataframe,
     filter_by_month,
     filter_loan_closed,
     filter_loan_disbursed,
+    filter_loan_requirements_current_and_future,
 )
 from gsheet_client import get_gspread_client
 from loan_services import (
@@ -73,6 +74,8 @@ def main():
 
     df_main = clean_dataframe(load_main_data(sheet))
     df_loan = load_loan_data(sheet)
+    df_loan_requirements_raw = load_loan_requirements_data(sheet)
+    df_loan_requirements = filter_loan_requirements_current_and_future(df_loan_requirements_raw)
     credentials_df = load_user_credentials_df(sheet)
 
     user_display_name = st.session_state.get("user_name", st.session_state.get("user_id", ""))
@@ -211,11 +214,13 @@ def main():
     }
 
     st.markdown("### Table Viewer")
+    loan_requirements_label = "Loan Requirements Waiting List"
     viewer_options = [
         "Your Active Loans",
         f"Loans Disbursed ({month})",
         f"Loans Closed ({month})",
         f"Loans to Close ({next_month})",
+        loan_requirements_label,
     ]
     if is_admin:
         viewer_options.extend([
@@ -331,6 +336,13 @@ def main():
                 st.metric("Total EMI Received", f"₹{total_emi:,.0f}")
             with col3:
                 st.metric("Total Amount", f"₹{total_amount:,.0f}")
+    elif selected_table == loan_requirements_label:
+        st.subheader(" Loan Requirements Waiting List")
+        if df_loan_requirements.empty:
+            st.info("No pending loan requirements found for the current or upcoming months.")
+        else:
+            st.info(f"Total pending loan requirements: {len(df_loan_requirements)}")
+            st.dataframe(df_loan_requirements, use_container_width=True, hide_index=True)
     else:
         selected_table_config = table_options.get(selected_table)
         if selected_table_config:
