@@ -1,5 +1,6 @@
 import datetime
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -120,19 +121,22 @@ def _render_loan_donut(total_loan_paid, total_amount_to_recover, total_loan_pend
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _get_user_monthly_share_contribution(sheet, user_id, user_display_name):
+def _load_user_credentials_df(sheet):
     try:
         credentials_sheet = sheet.worksheet(USER_CREDENTIALS_SHEET)
         records = credentials_sheet.get_all_records()
     except Exception:
-        return 0.0
+        return pd.DataFrame()
 
     if not records:
-        return 0.0
-
-    import pandas as pd
+        return pd.DataFrame()
 
     df_users = pd.DataFrame(records)
+    return df_users if not df_users.empty else pd.DataFrame()
+
+
+def _get_user_monthly_share_contribution(sheet, user_id, user_display_name, credentials_df=None):
+    df_users = credentials_df.copy() if credentials_df is not None else _load_user_credentials_df(sheet)
     if df_users.empty:
         return 0.0
 
@@ -180,6 +184,77 @@ def _get_next_month_monthly_emi(df_user_active_loans):
             monthly_emi += amount_to_pay / emi_remaining
 
     return float(monthly_emi)
+
+
+def _build_team_upcoming_collection_table(sheet, df_loan, admin_name, team_members, credentials_df=None):
+    if not team_members:
+        return pd.DataFrame()
+
+    records = []
+    for team_member in team_members:
+        member_active_loans = get_team_member_active_loans(df_loan, admin_name, team_member)
+        monthly_share = _get_user_monthly_share_contribution(
+            sheet,
+            user_id="",
+            user_display_name=team_member,
+            credentials_df=credentials_df,
+        )
+        monthly_emi = _get_next_month_monthly_emi(member_active_loans)
+        total_upcoming_payment = monthly_share + monthly_emi
+        records.append(
+            {
+                "Team Member": team_member,
+                "Monthly Share": round(monthly_share, 2),
+                "Monthly EMI": round(monthly_emi, 2),
+                "Upcoming Payment": round(total_upcoming_payment, 2),
+            }
+        )
+
+    team_df = pd.DataFrame(records)
+    if team_df.empty:
+        return team_df
+
+    return team_df.sort_values(by="Team Member", ascending=True).reset_index(drop=True)
+
+
+def _append_team_collection_total_row(team_collection_df):
+    if team_collection_df.empty:
+        return team_collection_df
+
+    total_row = pd.DataFrame(
+        [
+            {
+                "Team Member": "Total",
+                "Monthly Share": float(team_collection_df["Monthly Share"].sum()),
+                "Monthly EMI": float(team_collection_df["Monthly EMI"].sum()),
+                "Upcoming Payment": float(team_collection_df["Upcoming Payment"].sum()),
+            }
+        ]
+    )
+    return pd.concat([team_collection_df, total_row], ignore_index=True)
+
+
+def _format_team_collection_table(team_collection_df):
+    if team_collection_df.empty:
+        return team_collection_df
+
+    formatted_df = team_collection_df.copy()
+    for column_name in ["Monthly Share", "Monthly EMI", "Upcoming Payment"]:
+        formatted_df[column_name] = formatted_df[column_name].map(lambda value: f"₹{value:,.2f}")
+    return formatted_df
+
+
+def _style_team_collection_total_row(formatted_team_collection_df):
+    if formatted_team_collection_df.empty:
+        return formatted_team_collection_df
+
+    def _highlight_total(row):
+        is_total = str(row.get("Team Member", "")).strip().lower() == "total"
+        if is_total:
+            return ["background-color: #fff3bf; font-weight: 700; color: #1a1a1a;"] * len(row)
+        return [""] * len(row)
+
+    return formatted_team_collection_df.style.apply(_highlight_total, axis=1)
 
 
 def _get_upcoming_payment_month_label():
@@ -338,6 +413,7 @@ def main():
 
     df_main = clean_dataframe(load_main_data(sheet))
     df_loan = load_loan_data(sheet)
+    credentials_df = _load_user_credentials_df(sheet)
 
     user_display_name = st.session_state.get("user_name", st.session_state.get("user_id", ""))
     df_user_active_loans = get_user_active_loans(df_loan, user_display_name)
@@ -362,12 +438,21 @@ def main():
         sheet,
         st.session_state.get("user_id", ""),
         user_display_name,
+        credentials_df,
     )
     monthly_emi = _get_next_month_monthly_emi(df_user_active_loans)
 
     user_role = st.session_state.get("user_role", "").strip().lower()
     is_admin = user_role == "admin"
+    upcoming_payment_month = _get_upcoming_payment_month_label()
+    upcoming_team_collection_label = f"Upcoming Team Collection - {upcoming_payment_month}"
     team_members = get_team_members(df_loan, user_display_name) if is_admin else []
+    df_team_upcoming_collection = (
+        _build_team_upcoming_collection_table(sheet, df_loan, user_display_name, team_members, credentials_df)
+        if is_admin
+        else pd.DataFrame()
+    )
+    df_team_upcoming_collection_with_total = _append_team_collection_total_row(df_team_upcoming_collection)
 
     if "selected_dashboard_table" not in st.session_state:
         st.session_state.selected_dashboard_table = None
@@ -406,6 +491,7 @@ def main():
         ]
         if is_admin:
             mobile_options.append("Team Members Loans")
+            mobile_options.append(upcoming_team_collection_label)
 
         selected_mobile_view = st.selectbox(
             "Choose section",
@@ -416,6 +502,8 @@ def main():
 
         if selected_mobile_view == "Team Members Loans":
             st.session_state.selected_dashboard_table = "team_member_viewer"
+        elif selected_mobile_view == upcoming_team_collection_label:
+            st.session_state.selected_dashboard_table = "team_upcoming_collection"
         else:
             st.session_state.selected_dashboard_table = selected_mobile_view
 
@@ -446,6 +534,13 @@ def main():
         f"Loans to Close ({next_month})": (f" Loans to Close ({next_month})", df_to_close, None),
     }
 
+    if is_admin:
+        table_options[upcoming_team_collection_label] = (
+            f" {upcoming_team_collection_label}",
+            df_team_upcoming_collection_with_total,
+            None,
+        )
+
     if not mobile:
         with st.sidebar:
             st.markdown("### Table Viewer")
@@ -462,6 +557,8 @@ def main():
                 st.caption("View your team members' loans.")
                 if st.button("Team Members Loans", use_container_width=True, key="nav_team"):
                     st.session_state.selected_dashboard_table = "team_member_viewer"
+                if st.button(upcoming_team_collection_label, use_container_width=True, key="nav_team_collection"):
+                    st.session_state.selected_dashboard_table = "team_upcoming_collection"
 
                 if st.session_state.selected_dashboard_table == "team_member_viewer":
                     if team_members:
@@ -488,6 +585,16 @@ def main():
             st.dataframe(df_team_member_loans, use_container_width=True)
         else:
             st.info("Please select a team member from the sidebar to view loans.")
+    elif selected_table == "team_upcoming_collection" and is_admin:
+        st.subheader(f" {upcoming_team_collection_label}")
+        if df_team_upcoming_collection.empty:
+            st.info("No upcoming team collection data found.")
+        else:
+            total_team_collection = float(df_team_upcoming_collection["Upcoming Payment"].sum())
+            st.info(f"Total upcoming collection from your team: ₹{total_team_collection:,.2f}")
+            formatted_team_collection = _format_team_collection_table(df_team_upcoming_collection_with_total)
+            styled_team_collection = _style_team_collection_total_row(formatted_team_collection)
+            st.dataframe(styled_team_collection, use_container_width=True, hide_index=True)
     else:
         selected_table_config = table_options.get(selected_table)
         if selected_table_config:
@@ -495,11 +602,19 @@ def main():
             st.subheader(table_title)
             if table_message:
                 st.info(table_message)
-            st.dataframe(table_df, use_container_width=True)
+            hide_index_for_table = selected_table == upcoming_team_collection_label
+            st.dataframe(table_df, use_container_width=True, hide_index=hide_index_for_table)
         else:
             pass
 
-    pdf_buffer = generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close)
+    pdf_buffer = generate_pdf(
+        month,
+        metrics,
+        df_disbursed,
+        df_closed,
+        df_to_close,
+        df_team_upcoming_collection_with_total if is_admin else None,
+    )
     st.download_button(
         label=" Download Report as PDF",
         data=pdf_buffer,
