@@ -3,9 +3,11 @@ USER_CREDENTIALS_SHEET = 'user_credentails'
 
 MAIN_RANGE = 'A1:Q100'
 LOAN_RANGE = 'A1:H100000'
+LOAN_REQUIREMENTS_RANGE = 'A1:F10000'
 
 MAIN_SHEET = 'Main_Calculations'
 LOAN_SHEET = 'loan_waterfall_c2'
+LOAN_REQUIREMENTS_SHEET = 'loan_requirements'
 EMI_CUTOFF_DAY = 5
 
 NUMERIC_COLS = [
