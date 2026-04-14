@@ -16,12 +16,26 @@ def get_gspread_client() -> gspread.Client:
     otherwise falls back to local credentials.json file.
     """
 
+    sec = None
     try:
-        sec = st.secrets["gcp_service_account"]
-        creds = Credentials.from_service_account_info(sec, scopes=scopes)
+        # Supported format A: st.secrets["gcp_service_account"] as dict
+        # Supported format B: st.secrets["google"]["gcp_service_account"] as JSON string
+        if "gcp_service_account" in st.secrets:
+            sec = st.secrets["gcp_service_account"]
+        elif "google" in st.secrets and "gcp_service_account" in st.secrets["google"]:
+            sec = st.secrets["google"]["gcp_service_account"]
+
+        if isinstance(sec, str):
+            sec = json.loads(sec)
+
+        if sec:
+            creds = Credentials.from_service_account_info(sec, scopes=scopes)
+            return gspread.authorize(creds)
     except Exception:
-        # Fallback to local credentials.json
-        with open("credentials.json", "r") as f:
-            sec = json.load(f)
-        creds = Credentials.from_service_account_info(sec, scopes=scopes)
+        pass
+
+    # Fallback to local credentials.json for local development
+    with open("credentials.json", "r") as f:
+        sec = json.load(f)
+    creds = Credentials.from_service_account_info(sec, scopes=scopes)
     return gspread.authorize(creds)
