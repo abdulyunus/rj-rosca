@@ -4,6 +4,7 @@ Modularized version with separated concerns.
 """
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from auth import render_login_page
 from collection import (
@@ -260,9 +261,11 @@ def main():
             st.caption("Tap a section to open it.")
             if st.button("Dashboard Home", use_container_width=True, key="nav_home"):
                 st.session_state.selected_dashboard_table = None
+                st.session_state.auto_collapse_sidebar = True
             for table_name in table_options.keys():
                 if st.button(table_name, use_container_width=True, key=f"nav_{table_name}"):
                     st.session_state.selected_dashboard_table = table_name
+                    st.session_state.auto_collapse_sidebar = True
 
             if is_admin:
                 st.markdown("---")
@@ -272,18 +275,21 @@ def main():
                     "Team Members Loans", use_container_width=True, key="nav_team"
                 ):
                     st.session_state.selected_dashboard_table = "team_member_viewer"
+                    st.session_state.auto_collapse_sidebar = True
                 if st.button(
                     upcoming_team_collection_label,
                     use_container_width=True,
                     key="nav_team_collection",
                 ):
                     st.session_state.selected_dashboard_table = "team_upcoming_collection"
+                    st.session_state.auto_collapse_sidebar = True
                 if st.button(
                     overall_collection_label,
                     use_container_width=True,
                     key="nav_overall_collection",
                 ):
                     st.session_state.selected_dashboard_table = overall_collection_label
+                    st.session_state.auto_collapse_sidebar = True
 
                 if st.session_state.selected_dashboard_table == "team_member_viewer":
                     if team_members:
@@ -304,6 +310,21 @@ def main():
                         )
                     else:
                         st.warning("No team members found for your account.")
+
+    if st.session_state.get("auto_collapse_sidebar", False) and not mobile:
+        components.html(
+            """
+            <script>
+            const collapseButton = window.parent.document.querySelector('[data-testid="collapsedControl"] button')
+                || window.parent.document.querySelector('[data-testid="collapsedControl"]');
+            if (collapseButton) {
+                collapseButton.click();
+            }
+            </script>
+            """,
+            height=0,
+        )
+        st.session_state.auto_collapse_sidebar = False
 
     selected_table = st.session_state.selected_dashboard_table
     restricted_tables = {
