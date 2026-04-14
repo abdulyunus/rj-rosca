@@ -119,9 +119,8 @@ def render_login_page(sheet):
             st.session_state.user_id = login_id.strip()
             st.session_state.user_name = user_record.get("member_name", login_id.strip())
             st.session_state.user_role = user_record.get("role", "")
-            st.success("Login successful")
             st.rerun()
-
-        st.error("Invalid Login ID or password")
+        else:
+            st.error("Invalid Login ID or password")
 
     return False
