@@ -5,7 +5,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
-def generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close):
+def generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close, df_team_upcoming_collection=None):
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(buffer)
@@ -45,6 +45,9 @@ def generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close):
     elements.append(Spacer(1, 20))
 
     def df_to_table(df, title):
+        if df is None or getattr(df, "empty", True):
+            return
+
         elements.append(Paragraph(title, styles["Heading3"]))
         elements.append(Spacer(1, 8))
 
@@ -67,6 +70,13 @@ def generate_pdf(month, metrics, df_disbursed, df_closed, df_to_close):
     df_to_table(df_disbursed, "Loans Disbursed")
     df_to_table(df_closed, "Loans Closed")
     df_to_table(df_to_close, "Loans To Close")
+
+    if df_team_upcoming_collection is not None and not df_team_upcoming_collection.empty:
+        pdf_team_collection = df_team_upcoming_collection.copy()
+        for column_name in ["Monthly Share", "Monthly EMI", "Upcoming Payment"]:
+            if column_name in pdf_team_collection.columns:
+                pdf_team_collection[column_name] = pdf_team_collection[column_name].map(lambda value: f"₹{float(value):,.2f}")
+        df_to_table(pdf_team_collection, "Upcoming Team Collection")
 
     doc.build(elements)
 
