@@ -149,9 +149,7 @@ def main():
     mobile = is_mobile(get_screen_width())
 
     if mobile:
-        welcome_col, _, logout_col = st.columns([4, 1, 2])
-        with welcome_col:
-            st.caption(f"Welcome {st.session_state.get('user_name', st.session_state.user_id)}!")
+        _, logout_col = st.columns([5, 2])
         with logout_col:
             if st.button("Logout", key="logout_main", use_container_width=True):
                 st.session_state.authenticated = False
@@ -159,6 +157,7 @@ def main():
                 st.session_state.user_name = ""
                 st.session_state.user_role = ""
                 st.rerun()
+        st.markdown(f"**Welcome {st.session_state.get('user_name', st.session_state.user_id)}!**")
 
     if not mobile:
         with st.sidebar:
