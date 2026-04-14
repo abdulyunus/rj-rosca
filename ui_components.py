@@ -81,12 +81,49 @@ def apply_styles():
 
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
-        header {visibility: visible;}
+        header {visibility: hidden;}
 
-        [data-testid="stHeader"] { display: block; }
-        [data-testid="stToolbar"] { display: block !important; }
+        [data-testid="stHeader"] { display: none; }
+        [data-testid="stToolbar"] { display: none !important; }
         [data-testid="stDecoration"] { display: none !important; }
         [data-testid="stStatusWidget"] { display: none !important; }
+
+        .welcome-banner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: transparent;
+            color: #1a1a1a;
+            border-radius: 0;
+            padding: 0;
+            margin-bottom: 8px;
+            font-weight: 600;
+            box-shadow: none;
+            border: none;
+        }
+
+        .welcome-text {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+
+        .welcome-logout {
+            background: linear-gradient(135deg, #ef5350, #c62828);
+            color: #ffffff !important;
+            padding: 6px 14px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: 0px 2px 6px rgba(0,0,0,0.2);
+            white-space: nowrap;
+        }
+
+        .welcome-logout:hover {
+            filter: brightness(0.95);
+            text-decoration: none;
+        }
 
         button[title="View fullscreen"] {
             display: none !important;
