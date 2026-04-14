@@ -39,6 +39,9 @@ def apply_styles():
         """
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="theme-color" content="#1976d2">
+        <meta name="application-name" content="ROSCA">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-title" content="ROSCA">
         """,
         unsafe_allow_html=True,
     )
