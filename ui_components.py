@@ -81,10 +81,10 @@ def apply_styles():
 
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
-        header {visibility: hidden;}
+        header {visibility: visible;}
 
-        [data-testid="stHeader"] { display: none; }
-        [data-testid="stToolbar"] { display: none !important; }
+        [data-testid="stHeader"] { display: block; }
+        [data-testid="stToolbar"] { display: block !important; }
         [data-testid="stDecoration"] { display: none !important; }
         [data-testid="stStatusWidget"] { display: none !important; }
 
