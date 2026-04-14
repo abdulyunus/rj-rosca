@@ -133,27 +133,28 @@ def render_key_metrics(mobile, metrics, previous_month_balance, user_display_nam
         metric_card("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}", "orange", "")
         metric_card("Loan Applications Processed", int(metrics["loan_processed"]), "purple", "")
         metric_card("Loans Cleared", int(metrics["loan_cleared"]), "red", "")
-        metric_card("Total Share Amount", f"₹{metrics['total_share']:,.2f}", "teal", "")
         metric_card("Balance Available", f"₹{metrics['balance_available']:,.2f}", "pink", "")
-        metric_card("Previous Month Balance", f"₹{previous_month_balance:,.2f}", "indigo", "")
         st.markdown(loan_details_heading)
         metric_card("Total Loan Pending", int(total_loan_pending), "purple", "")
         metric_card("Total Amount to Recover", f"₹{total_amount_to_recover:,.2f}", "orange", "")
         metric_card("Total Loan Paid", f"₹{total_loan_paid:,.2f}", "green", "")
         return
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
+    row1_col1, row1_col2, row1_col3 = st.columns(3)
+    with row1_col1:
         metric_card("Total Collection", f"₹{metrics['total_collection']:,.2f}", "blue", "")
-        metric_card("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}", "orange", "")
-        metric_card("Total Share Amount", f"₹{metrics['total_share']:,.2f}", "teal", "")
-    with col2:
+    with row1_col2:
         metric_card("Total EMI Received", f"₹{metrics['total_emi']:,.2f}", "green", "")
+    with row1_col3:
+        metric_card("Total Loans Disbursed", f"₹{metrics['total_loans']:,.2f}", "orange", "")
+
+    row2_col1, row2_col2, row2_col3 = st.columns(3)
+    with row2_col1:
         metric_card("Loan Applications Processed", int(metrics["loan_processed"]), "purple", "")
+    with row2_col2:
         metric_card("Loans Cleared", int(metrics["loan_cleared"]), "red", "")
-    with col3:
+    with row2_col3:
         metric_card("Balance Available", f"₹{metrics['balance_available']:,.2f}", "pink", "")
-        metric_card("Previous Month Balance", f"₹{previous_month_balance:,.2f}", "indigo", "")
 
     st.markdown(loan_details_heading)
     user_col1, user_col2, user_col3 = st.columns(3)
