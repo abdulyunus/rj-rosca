@@ -56,13 +56,14 @@ def main():
         initial_sidebar_state="expanded",
     )
     apply_styles()
-    mobile = is_mobile(get_screen_width())
 
     client = get_gspread_client()
     sheet = client.open(SHEET_NAME)
 
     if not render_login_page(sheet):
         return
+
+    mobile = is_mobile(get_screen_width())
 
     if st.query_params.get("action") == "logout":
         st.session_state.authenticated = False
