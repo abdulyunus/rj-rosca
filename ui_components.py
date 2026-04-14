@@ -5,13 +5,15 @@ import streamlit.components.v1 as components
 def get_screen_width():
     # Try request headers first (works better on Streamlit Cloud/mobile browsers).
     try:
-        headers = getattr(st.context, "headers", {})
-        viewport_width = headers.get("sec-ch-viewport-width", "")
+        raw_headers = getattr(st.context, "headers", {})
+        headers = {str(k).lower(): str(v) for k, v in dict(raw_headers).items()}
+
+        viewport_width = headers.get("sec-ch-viewport-width", "") or headers.get("viewport-width", "")
         if str(viewport_width).isdigit():
             return int(viewport_width)
 
-        user_agent = str(headers.get("user-agent", "")).lower()
-        if any(token in user_agent for token in ["android", "iphone", "ipad", "mobile"]):
+        user_agent = headers.get("user-agent", "").lower()
+        if any(token in user_agent for token in ["android", "iphone", "ipad", "ipod", "mobile"]):
             return 390
     except Exception:
         pass
@@ -81,10 +83,11 @@ def apply_styles():
 
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
-        header {visibility: hidden;}
+        header {visibility: visible;}
 
-        [data-testid="stHeader"] { display: none; }
-        [data-testid="stToolbar"] { display: none !important; }
+        [data-testid="stHeader"] { display: block; }
+        [data-testid="stToolbar"] { display: block !important; }
+        [data-testid="collapsedControl"] { display: flex !important; }
         [data-testid="stDecoration"] { display: none !important; }
         [data-testid="stStatusWidget"] { display: none !important; }
 
@@ -152,6 +155,11 @@ def apply_styles():
         }
 
         @media (max-width: 768px) {
+            header {visibility: hidden;}
+            [data-testid="stHeader"] { display: none; }
+            [data-testid="stToolbar"] { display: none !important; }
+            [data-testid="collapsedControl"] { display: none !important; }
+
             .block-container {
                 padding: 0.5rem !important;
             }
