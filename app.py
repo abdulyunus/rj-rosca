@@ -247,7 +247,6 @@ def main():
     if mobile:
         st.markdown("### Table Viewer")
         mobile_options = [
-            "Dashboard Home",
             "Your Active Loans",
             f"Loans Disbursed ({month})",
             f"Loans Closed ({month})",
@@ -263,9 +262,7 @@ def main():
             help="Select the table section to display",
         )
 
-        if selected_mobile_view == "Dashboard Home":
-            st.session_state.selected_dashboard_table = None
-        elif selected_mobile_view == "Team Members Loans":
+        if selected_mobile_view == "Team Members Loans":
             st.session_state.selected_dashboard_table = "team_member_viewer"
         else:
             st.session_state.selected_dashboard_table = selected_mobile_view
