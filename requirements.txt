@@ -7,3 +7,4 @@ PyOpenSSL
 streamlit
 streamlit-oauth
 reportlab
+plotly
