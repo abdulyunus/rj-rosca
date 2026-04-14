@@ -85,6 +85,7 @@ def main():
         """,
         unsafe_allow_html=True,
     )
+    st.title("RJ-ROSCA Financial Report")
 
     df_user_active_loans = get_user_active_loans(df_loan, user_display_name)
 
