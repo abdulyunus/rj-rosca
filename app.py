@@ -4,6 +4,7 @@ Modularized version with separated concerns.
 """
 import pandas as pd
 import streamlit as st
+from datetime import date
 
 from auth import render_login_page
 from collection import (
@@ -14,7 +15,7 @@ from collection import (
     get_team_collection_from_overall,
     style_team_collection_total_row,
 )
-from config import SHEET_NAME
+from config import SHEET_NAME, EMI_CUTOFF_DAY
 from credentials import (
     get_all_team_leads,
     get_logged_in_team_lead,
@@ -33,8 +34,10 @@ from data_processor import (
 )
 from gsheet_client import get_gspread_client
 from loan_services import (
+    find_column,
     get_team_member_active_loans,
     get_user_active_loans,
+    parse_month_label,
     to_float,
 )
 from metrics import calculate_metrics
@@ -100,17 +103,58 @@ def main():
         else 0.0
     )
 
-    loan_amount_col = "Loan Amount"  # Simplified for main module
     total_loan_paid = 0.0
-    if loan_amount_col and "Amount to Pay" in df_user_active_loans.columns:
-        total_loan_paid = (
-            (
-                df_user_active_loans[loan_amount_col].apply(to_float)
-                - df_user_active_loans["Amount to Pay"].apply(to_float)
+    loan_amount_col = find_column(
+        df_user_active_loans,
+        ["Loan Amount", "Loan", "Total Loan Amount", "Disbursed Amount"],
+    )
+    total_months_col = find_column(
+        df_user_active_loans,
+        ["Total Months", "Tenure", "Loan Tenure", "EMI Months"],
+    )
+    emi_start_col = find_column(
+        df_user_active_loans,
+        ["EMI Start Month", "EMI_Start_Month", "Start Month"],
+    )
+
+    if loan_amount_col and total_months_col:
+        today = date.today()
+        current_month = today.replace(day=1)
+
+        for _, row in df_user_active_loans.iterrows():
+            loan_amount = to_float(row.get(loan_amount_col, 0))
+            total_months = int(to_float(row.get(total_months_col, 0)))
+            if loan_amount <= 0 or total_months <= 0:
+                continue
+
+            start_month = (
+                parse_month_label(row.get(emi_start_col, ""))
+                if emi_start_col
+                else None
             )
-            .clip(lower=0)
-            .sum()
-        )
+
+            # Future EMI start month: do not count anything as paid yet.
+            if start_month and start_month > current_month:
+                continue
+
+            if start_month:
+                months_elapsed = (
+                    (current_month.year - start_month.year) * 12
+                    + (current_month.month - start_month.month)
+                )
+                emi_paid_count = max(months_elapsed, 0)
+                # Count current month's EMI as paid only after cutoff day.
+                if today.day > EMI_CUTOFF_DAY:
+                    emi_paid_count += 1
+            else:
+                # Fallback for missing EMI start month: preserve previous behavior.
+                amount_to_pay = to_float(row.get("Amount to Pay", 0))
+                monthly_emi = loan_amount / total_months
+                inferred_paid = (loan_amount - amount_to_pay) / monthly_emi if monthly_emi else 0
+                emi_paid_count = int(max(inferred_paid, 0))
+
+            emi_paid_count = min(emi_paid_count, total_months)
+            total_loan_paid += (loan_amount / total_months) * emi_paid_count
 
     month, next_month, previous_month, _ = render_filters(df_main)
     if not month:
