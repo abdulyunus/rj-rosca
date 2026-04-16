@@ -1,5 +1,14 @@
 import pandas as pd
-from config import MAIN_RANGE, LOAN_RANGE, MAIN_SHEET, LOAN_SHEET, LOAN_REQUIREMENTS_RANGE, LOAN_REQUIREMENTS_SHEET
+from config import (
+    MAIN_RANGE,
+    LOAN_RANGE,
+    MAIN_SHEET,
+    LOAN_SHEET,
+    LOAN_REQUIREMENTS_RANGE,
+    LOAN_REQUIREMENTS_SHEET,
+    MISCELLANEOUS_RANGE,
+    MISCELLANEOUS_SHEET,
+)
 
 def load_sheet_data(sheet, sheet_name, cell_range):
     worksheet = sheet.worksheet(sheet_name)
@@ -26,3 +35,7 @@ def load_loan_data(sheet):
 
 def load_loan_requirements_data(sheet):
     return load_sheet_data(sheet, LOAN_REQUIREMENTS_SHEET, LOAN_REQUIREMENTS_RANGE)
+
+
+def load_miscellaneous_data(sheet):
+    return load_sheet_data(sheet, MISCELLANEOUS_SHEET, MISCELLANEOUS_RANGE)
