@@ -117,8 +117,126 @@ def render_upcoming_payment_summary(monthly_share_contribution, monthly_emi):
     )
 
 
-def render_key_metrics(mobile, metrics, previous_month_balance, user_display_name, total_loan_pending, total_amount_to_recover, total_loan_paid, month):
+def render_key_metrics(
+    mobile,
+    metrics,
+    previous_month_balance,
+    user_display_name,
+    total_loan_pending,
+    total_amount_to_recover,
+    total_loan_paid,
+    month,
+    your_money,
+    user_units,
+    units_x_500,
+    month_count_till_date,
+    miscellaneous_amount,
+    total_miscellaneous,
+    total_members,
+):
     """Render key metrics dashboard."""
+    your_money_sum = float(your_money) + float(units_x_500)
+
+    st.markdown(
+        """
+        <style>
+        .ym-row {
+            display: flex;
+            gap: 10px;
+            margin: 6px 0 12px 0;
+            align-items: stretch;
+        }
+        .ym-card {
+            flex: 1;
+            border-radius: 14px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .ym-card-main {
+            background: linear-gradient(120deg, #0c4a6e 0%, #0284c7 60%, #6366f1 100%);
+            color: #f0f9ff;
+            flex: 1.6;
+        }
+        .ym-card-misc {
+            background: #ffffff;
+            border: 1px solid #e9d5ff;
+            color: #4c1d95;
+            flex: 1.1;
+        }
+        .ym-icon-box {
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+        }
+        .ym-icon-main { background: rgba(255,255,255,0.18); }
+        .ym-icon-misc { background: linear-gradient(135deg,#7c3aed,#a855f7); }
+        .ym-body { flex: 1; min-width: 0; }
+        .ym-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            opacity: 0.75;
+        }
+        .ym-value {
+            font-size: 1.35rem;
+            font-weight: 800;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ym-chips {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+            flex-wrap: wrap;
+        }
+        .ym-chip {
+            background: rgba(255,255,255,0.16);
+            border: 1px solid rgba(255,255,255,0.22);
+            border-radius: 999px;
+            padding: 2px 8px;
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: #e0f2fe;
+        }
+        .ym-misc-stats {
+            display: flex;
+            gap: 6px;
+            margin-top: 5px;
+        }
+        .ym-misc-stat {
+            background: #faf5ff;
+            border-radius: 8px;
+            padding: 3px 8px;
+            font-size: 0.68rem;
+            color: #6d28d9;
+            font-weight: 600;
+        }
+        @media (max-width: 768px) {
+            .ym-row { flex-direction: column; }
+            .ym-value { font-size: 1.2rem; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="ym-row"><div class="ym-card ym-card-main"><div class="ym-icon-box ym-icon-main">💰</div><div class="ym-body"><div class="ym-label">Your Money (Sum)</div><div class="ym-value">₹{your_money_sum:,.2f}</div><div class="ym-chips"><span class="ym-chip">🏦 {user_units:,.0f} unit(s)</span><span class="ym-chip">📅 {int(month_count_till_date)} month(s)</span></div></div></div><div class="ym-card ym-card-misc"><div class="ym-icon-box ym-icon-misc">🎲</div><div class="ym-body"><div class="ym-label">Miscellaneous Expenses</div><div class="ym-value">₹{miscellaneous_amount:,.2f}</div><div class="ym-misc-stats"><span class="ym-misc-stat">Pool ₹{total_miscellaneous:,.0f}</span><span class="ym-misc-stat">{int(total_members)} members</span></div></div></div></div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.subheader(f" Key Metrics - {month}")
 
     loan_details_heading = (
@@ -164,3 +282,4 @@ def render_key_metrics(mobile, metrics, previous_month_balance, user_display_nam
         metric_card("Total Loan Paid", f"₹{total_loan_paid:,.2f}", "green", "")
     with user_col3:
         metric_card("Total Amount to Recover", f"₹{total_amount_to_recover:,.2f}", "orange", "")
+
