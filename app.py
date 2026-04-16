@@ -17,6 +17,7 @@ from collection import (
 )
 from config import SHEET_NAME, EMI_CUTOFF_DAY
 from credentials import (
+    find_user_credentials_row,
     get_all_team_leads,
     get_logged_in_team_lead,
     get_team_members_from_credentials,
@@ -24,7 +25,12 @@ from credentials import (
     include_member,
     load_user_credentials_df,
 )
-from data_loader import load_loan_data, load_loan_requirements_data, load_main_data
+from data_loader import (
+    load_loan_data,
+    load_loan_requirements_data,
+    load_main_data,
+    load_miscellaneous_data,
+)
 from data_processor import (
     clean_dataframe,
     filter_by_month,
@@ -79,6 +85,7 @@ def main():
     df_main = clean_dataframe(load_main_data(sheet))
     df_loan = load_loan_data(sheet)
     df_loan_requirements_raw = load_loan_requirements_data(sheet)
+    df_miscellaneous = load_miscellaneous_data(sheet)
     df_loan_requirements = filter_loan_requirements_current_and_future(df_loan_requirements_raw)
     credentials_df = load_user_credentials_df(sheet)
 
@@ -171,6 +178,78 @@ def main():
 
     monthly_emi = get_next_month_monthly_emi(df_user_active_loans)
 
+    user_units = 0.0
+    user_row = find_user_credentials_row(
+        credentials_df,
+        st.session_state.get("user_id", ""),
+        user_display_name,
+    )
+    units_col = find_column(credentials_df, ["units", "unit", "no of units"])
+    if user_row is not None and units_col:
+        user_units = to_float(user_row.get(units_col, 0))
+    units_x_500 = float(user_units) * 500
+
+    miscellaneous_amount = 0.0
+    total_miscellaneous = 0.0
+    misc_amount_col = find_column(df_miscellaneous, ["Amount", "amount"])
+    credentials_member_col = find_column(
+        credentials_df,
+        ["member_name", "member name", "name", "full_name", "full name"],
+    )
+    total_members = 0
+    if credentials_member_col:
+        total_members = int(
+            credentials_df[credentials_member_col]
+            .astype(str)
+            .str.strip()
+            .replace("", pd.NA)
+            .dropna()
+            .shape[0]
+        )
+
+    if misc_amount_col and total_members > 0 and not df_miscellaneous.empty:
+        total_miscellaneous = df_miscellaneous[misc_amount_col].apply(to_float).sum()
+        miscellaneous_amount = float(total_miscellaneous) / float(total_members)
+
+    your_money = 0.0
+    month_count_till_date = 0
+    month_col = find_column(df_main, ["Month", "month"])
+    amount_col = find_column(df_main, ["Amount Collected", "amount collected", "Total Amount"])
+
+    if month_col and amount_col and not df_main.empty:
+        df_money = df_main.copy()
+        df_money["_parsed_month"] = df_money[month_col].apply(parse_month_label)
+        df_money = df_money[df_money["_parsed_month"].notna()].copy()
+
+        if not df_money.empty:
+            min_month = df_money["_parsed_month"].min()
+            second_row_month = None
+            if len(df_main.index) >= 2:
+                second_row_month = parse_month_label(df_main.iloc[1].get(month_col, ""))
+
+            start_month_candidates = [m for m in [second_row_month, min_month] if m]
+            start_month = min(start_month_candidates) if start_month_candidates else None
+
+            today = date.today()
+            cutoff_month = today.replace(day=1)
+            if today.day <= EMI_CUTOFF_DAY:
+                if cutoff_month.month == 1:
+                    cutoff_month = cutoff_month.replace(year=cutoff_month.year - 1, month=12)
+                else:
+                    cutoff_month = cutoff_month.replace(month=cutoff_month.month - 1)
+
+            if start_month and cutoff_month >= start_month:
+                month_count_till_date = (
+                    (cutoff_month.year - start_month.year) * 12
+                    + (cutoff_month.month - start_month.month)
+                    + 1
+                )
+
+                amount_collected_sum = df_money[
+                    df_money["_parsed_month"] <= cutoff_month
+                ][amount_col].apply(to_float).sum()
+                your_money = float(amount_collected_sum) * float(user_units)
+
     user_role = st.session_state.get("user_role", "").strip().lower()
     is_admin = user_role == "admin"
     upcoming_payment_month = get_upcoming_payment_month_label()
@@ -228,16 +307,53 @@ def main():
     df_prev = filter_by_month(df_main, previous_month)
     previous_month_balance = df_prev["Total Balance"].sum() if not df_prev.empty else 0
 
-    render_key_metrics(
-        mobile,
-        metrics,
-        previous_month_balance,
-        user_display_name,
-        total_loan_pending,
-        total_amount_to_recover,
-        total_loan_paid,
-        month,
-    )
+    try:
+        render_key_metrics(
+            mobile,
+            metrics,
+            previous_month_balance,
+            user_display_name,
+            total_loan_pending,
+            total_amount_to_recover,
+            total_loan_paid,
+            month,
+            your_money,
+            user_units,
+            units_x_500,
+            month_count_till_date,
+            miscellaneous_amount,
+            total_miscellaneous,
+            total_members,
+        )
+    except TypeError:
+        try:
+            render_key_metrics(
+                mobile,
+                metrics,
+                previous_month_balance,
+                user_display_name,
+                total_loan_pending,
+                total_amount_to_recover,
+                total_loan_paid,
+                month,
+                your_money,
+                user_units,
+                units_x_500,
+                month_count_till_date,
+                miscellaneous_amount,
+            )
+        except TypeError:
+            # Compatibility fallback if Streamlit still has an older ui.py signature loaded.
+            render_key_metrics(
+                mobile,
+                metrics,
+                previous_month_balance,
+                user_display_name,
+                total_loan_pending,
+                total_amount_to_recover,
+                total_loan_paid,
+                month,
+            )
 
     render_upcoming_payment_summary(monthly_share_contribution, monthly_emi)
 
