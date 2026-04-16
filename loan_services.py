@@ -66,7 +66,8 @@ def add_loan_projection_columns(df, emi_start_col, last_emi_col, loan_amount_col
         end_month = parse_month_label(row.get(last_emi_col, ""))
         effective_start = max(start_month, current_month) if start_month else current_month
         remaining = month_span_inclusive(effective_start, end_month)
-        if post_due_day_adjustment:
+        # Apply the cutoff-day reduction only when EMI has already started for the current month.
+        if post_due_day_adjustment and (not start_month or start_month <= current_month):
             remaining = max(remaining - post_due_day_adjustment, 0)
         return remaining
 
