@@ -40,6 +40,7 @@ from data_processor import (
 )
 from gsheet_client import get_gspread_client
 from loan_services import (
+    add_loan_projection_columns,
     find_column,
     get_team_member_active_loans,
     get_user_active_loans,
@@ -109,6 +110,27 @@ def main():
         if "Amount to Pay" in df_user_active_loans.columns
         else 0.0
     )
+
+    total_amount_to_recover_all_users = 0.0
+    status_col_all = find_column(df_loan, ["Status", "Loan Status"])
+    emi_start_col_all = find_column(df_loan, ["EMI Start Month", "EMI_Start_Month", "Start Month"])
+    last_emi_col_all = find_column(df_loan, ["Last EMI Month", "Last_EMI_Month", "End Month"])
+    loan_amount_col_all = find_column(df_loan, ["Loan Amount", "Loan", "Total Loan Amount", "Disbursed Amount"])
+    total_months_col_all = find_column(df_loan, ["Total Months", "Tenure", "Loan Tenure", "EMI Months"])
+
+    if status_col_all:
+        df_all_active_loans = df_loan[
+            df_loan[status_col_all].astype(str).str.strip().str.lower() == "active"
+        ].copy()
+        df_all_active_loans = add_loan_projection_columns(
+            df_all_active_loans,
+            emi_start_col_all,
+            last_emi_col_all,
+            loan_amount_col_all,
+            total_months_col_all,
+        )
+        if "Amount to Pay" in df_all_active_loans.columns:
+            total_amount_to_recover_all_users = float(df_all_active_loans["Amount to Pay"].sum())
 
     total_loan_paid = 0.0
     loan_amount_col = find_column(
@@ -250,6 +272,35 @@ def main():
                 ][amount_col].apply(to_float).sum()
                 your_money = float(amount_collected_sum) * float(user_units)
 
+    total_loan_distributed_since_inception = 0.0
+    loan_distributed_cutoff_label = ""
+    loan_col_main = find_column(df_main, ["Loan", "loan"])
+
+    if loan_col_main and not df_main.empty:
+        today = date.today()
+        cutoff_month = today.replace(day=1)
+        if today.day <= EMI_CUTOFF_DAY:
+            if cutoff_month.month == 1:
+                cutoff_month = cutoff_month.replace(year=cutoff_month.year - 1, month=12)
+            else:
+                cutoff_month = cutoff_month.replace(month=cutoff_month.month - 1)
+
+        loan_distributed_cutoff_label = cutoff_month.strftime("%B %Y")
+        month_col_main = find_column(df_main, ["Month", "month"])
+
+        if month_col_main:
+            df_loan_dist = df_main.copy()
+            df_loan_dist["_parsed_month"] = df_loan_dist[month_col_main].apply(parse_month_label)
+            df_loan_dist = df_loan_dist[df_loan_dist["_parsed_month"].notna()].copy()
+            if not df_loan_dist.empty:
+                total_loan_distributed_since_inception = float(
+                    df_loan_dist[df_loan_dist["_parsed_month"] <= cutoff_month][loan_col_main]
+                    .apply(to_float)
+                    .sum()
+                )
+        else:
+            total_loan_distributed_since_inception = float(df_main[loan_col_main].apply(to_float).sum())
+
     user_role = st.session_state.get("user_role", "").strip().lower()
     is_admin = user_role == "admin"
     upcoming_payment_month = get_upcoming_payment_month_label()
@@ -315,6 +366,7 @@ def main():
             user_display_name,
             total_loan_pending,
             total_amount_to_recover,
+            total_amount_to_recover_all_users,
             total_loan_paid,
             month,
             your_money,
@@ -324,6 +376,8 @@ def main():
             miscellaneous_amount,
             total_miscellaneous,
             total_members,
+            total_loan_distributed_since_inception,
+            loan_distributed_cutoff_label,
         )
     except TypeError:
         try:
@@ -334,6 +388,7 @@ def main():
                 user_display_name,
                 total_loan_pending,
                 total_amount_to_recover,
+                total_amount_to_recover_all_users,
                 total_loan_paid,
                 month,
                 your_money,
@@ -341,6 +396,10 @@ def main():
                 units_x_500,
                 month_count_till_date,
                 miscellaneous_amount,
+                total_miscellaneous,
+                total_members,
+                total_loan_distributed_since_inception,
+                loan_distributed_cutoff_label,
             )
         except TypeError:
             # Compatibility fallback if Streamlit still has an older ui.py signature loaded.

@@ -124,6 +124,7 @@ def render_key_metrics(
     user_display_name,
     total_loan_pending,
     total_amount_to_recover,
+    total_amount_to_recover_all_users,
     total_loan_paid,
     month,
     your_money,
@@ -133,6 +134,8 @@ def render_key_metrics(
     miscellaneous_amount,
     total_miscellaneous,
     total_members,
+    total_loan_distributed_since_inception,
+    loan_distributed_cutoff_label,
 ):
     """Render key metrics dashboard."""
     your_money_sum = float(your_money) + float(units_x_500)
@@ -159,10 +162,16 @@ def render_key_metrics(
             color: #f0f9ff;
             flex: 1.6;
         }
-        .ym-card-misc {
-            background: #ffffff;
-            border: 1px solid #e9d5ff;
-            color: #4c1d95;
+        .ym-card-distributed {
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            color: #9a3412;
+            flex: 1.2;
+        }
+        .ym-card-recover {
+            background: #ecfeff;
+            border: 1px solid #99f6e4;
+            color: #134e4a;
             flex: 1.1;
         }
         .ym-icon-box {
@@ -176,7 +185,8 @@ def render_key_metrics(
             font-size: 1.1rem;
         }
         .ym-icon-main { background: rgba(255,255,255,0.18); }
-        .ym-icon-misc { background: linear-gradient(135deg,#7c3aed,#a855f7); }
+        .ym-icon-distributed { background: linear-gradient(135deg,#fb923c,#f97316); }
+        .ym-icon-recover { background: linear-gradient(135deg,#14b8a6,#0d9488); }
         .ym-body { flex: 1; min-width: 0; }
         .ym-label {
             font-size: 0.72rem;
@@ -192,6 +202,30 @@ def render_key_metrics(
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+        .ym-meta {
+            font-size: 0.7rem;
+            opacity: 0.78;
+            margin-top: 4px;
+            line-height: 1.25;
+            white-space: normal;
+        }
+        .ym-duo {
+            margin-top: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .ym-duo-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 0.76rem;
+            font-weight: 600;
+            opacity: 0.92;
+        }
+        .ym-duo-item span {
+            opacity: 0.9;
         }
         .ym-chips {
             display: flex;
@@ -232,10 +266,21 @@ def render_key_metrics(
 
     st.markdown(
         f"""
-        <div class="ym-row"><div class="ym-card ym-card-main"><div class="ym-icon-box ym-icon-main">💰</div><div class="ym-body"><div class="ym-label">Your Money (Sum)</div><div class="ym-value">₹{your_money_sum:,.2f}</div><div class="ym-chips"><span class="ym-chip">🏦 {user_units:,.0f} unit(s)</span><span class="ym-chip">📅 {int(month_count_till_date)} month(s)</span></div></div></div><div class="ym-card ym-card-misc"><div class="ym-icon-box ym-icon-misc">🎲</div><div class="ym-body"><div class="ym-label">Miscellaneous Expenses</div><div class="ym-value">₹{miscellaneous_amount:,.2f}</div><div class="ym-misc-stats"><span class="ym-misc-stat">Pool ₹{total_miscellaneous:,.0f}</span><span class="ym-misc-stat">{int(total_members)} members</span></div></div></div></div>
+        <div class="ym-row"><div class="ym-card ym-card-main"><div class="ym-icon-box ym-icon-main">💰</div><div class="ym-body"><div class="ym-label">Your Money & Miscellaneous Expenses</div><div class="ym-duo"><div class="ym-duo-item"><span>Your Money</span><strong>₹{your_money_sum:,.2f}</strong></div><div class="ym-duo-item"><span>Miscellaneous Expenses</span><strong>₹{miscellaneous_amount:,.2f}</strong></div></div><div class="ym-chips"><span class="ym-chip">🏦 {user_units:,.0f} unit(s)</span><span class="ym-chip">📅 {int(month_count_till_date)} month(s)</span></div></div></div><div class="ym-card ym-card-distributed"><div class="ym-icon-box ym-icon-distributed">🏦</div><div class="ym-body"><div class="ym-label">Total Loan Distributed Since Inception</div><div class="ym-value">₹{total_loan_distributed_since_inception:,.2f}</div><div class="ym-meta">Rs {total_loan_distributed_since_inception:,.0f} Loan has been distributed Till {EMI_CUTOFF_DAY}th {loan_distributed_cutoff_label} without any interest.</div></div></div><div class="ym-card ym-card-recover"><div class="ym-icon-box ym-icon-recover">📥</div><div class="ym-body"><div class="ym-label">Total Loan To Recover</div><div class="ym-value">₹{total_amount_to_recover_all_users:,.2f}</div><div class="ym-meta">Across all users based on active loan recoveries.</div></div></div></div>
         """,
         unsafe_allow_html=True,
     )
+
+    show_more_key = "show_more_kpis"
+    if show_more_key not in st.session_state:
+        st.session_state[show_more_key] = False
+
+    button_label = "Show Less KPI" if st.session_state[show_more_key] else "Show More KPI"
+    if st.button(button_label, key="toggle_kpi_visibility"):
+        st.session_state[show_more_key] = not st.session_state[show_more_key]
+
+    if not st.session_state[show_more_key]:
+        return
 
     st.subheader(f" Key Metrics - {month}")
 
