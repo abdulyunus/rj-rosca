@@ -7,12 +7,13 @@ import logging
 from datetime import date, datetime
 
 from schemas.models import LoansResponse, LoanItem
-from services.data_loader import load_loan_data
+from services.data_loader import load_loan_data, load_loan_requirements_data
 from services.loan_services import (
     get_user_active_loans,
     add_loan_projection_columns,
     convert_loans_to_items
 )
+from services.data_processor import filter_loan_requirements_current_and_future
 from core.security import get_current_user
 from core.config import settings
 
@@ -158,6 +159,61 @@ async def get_all_loans(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve loans"
+        )
+
+
+@router.get("/requirements")
+async def get_loan_requirements(token_payload: dict = Depends(get_current_user)):
+    """
+    Get loan requirements table as-is, filtered to current/future months.
+    Cutoff rule: before 5th -> previous month, on/after 5th -> current month.
+    """
+    try:
+        client = get_client()
+        _ = token_payload
+
+        df_requirements = load_loan_requirements_data(client)
+        if df_requirements.empty:
+            return {
+                "total_count": 0,
+                "requirements": [],
+                "month": None,
+                "year": None,
+            }
+
+        cutoff_day = int(getattr(settings, "EMI_CUTOFF_DAY", 5) or 5)
+        today = date.today()
+        if today.day < cutoff_day:
+            if today.month == 1:
+                cutoff_year = today.year - 1
+                cutoff_month = 12
+            else:
+                cutoff_year = today.year
+                cutoff_month = today.month - 1
+        else:
+            cutoff_year = today.year
+            cutoff_month = today.month
+
+        filtered_df = filter_loan_requirements_current_and_future(
+            df_requirements,
+            cutoff_date=today,
+            cutoff_day=cutoff_day,
+        )
+        rows = filtered_df.fillna("").to_dict(orient="records")
+
+        return {
+            "total_count": len(rows),
+            "requirements": rows,
+            "month": str(cutoff_month),
+            "year": cutoff_year,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving loan requirements: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve loan requirements"
         )
 
 
