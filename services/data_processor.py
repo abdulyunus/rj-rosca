@@ -207,13 +207,105 @@ def filter_loan_closed(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def filter_loan_requirements_current_and_future(df: pd.DataFrame) -> pd.DataFrame:
-    """Filter for current and future loan requirements"""
+def filter_loan_requirements_current_and_future(
+    df: pd.DataFrame,
+    cutoff_date: Optional[date] = None,
+    cutoff_day: int = 5,
+) -> pd.DataFrame:
+    """Filter loan requirements to current/future months using a cutoff day."""
     if df.empty:
         return df
-    
-    # Implement filtering logic based on dates
-    return df
+
+    try:
+        today = cutoff_date or date.today()
+        if int(today.day) < int(cutoff_day):
+            if today.month == 1:
+                effective_year = today.year - 1
+                effective_month = 12
+            else:
+                effective_year = today.year
+                effective_month = today.month - 1
+        else:
+            effective_year = today.year
+            effective_month = today.month
+
+        effective_period = pd.Period(year=int(effective_year), month=int(effective_month), freq="M")
+
+        month_col = find_column(df, ['Month', 'month'])
+        year_col = find_column(df, ['Year', 'year'])
+        date_col = find_column(df, ['Date', 'Month Year', 'Payment Date', 'Created At', 'Timestamp'])
+
+        if month_col and year_col:
+            month_series = df[month_col].apply(_parse_month_value)
+            year_series = pd.to_numeric(df[year_col], errors='coerce')
+
+            parsed_pairs = df[month_col].apply(_parse_month_year_value)
+            parsed_month_series = parsed_pairs.apply(lambda x: x[0] if x else None)
+            parsed_year_series = parsed_pairs.apply(lambda x: x[1] if x else None)
+
+            month_series = month_series.fillna(pd.to_numeric(parsed_month_series, errors='coerce'))
+            year_series = year_series.fillna(pd.to_numeric(parsed_year_series, errors='coerce'))
+
+            two_digit_years = year_series.notna() & (year_series < 100)
+            if two_digit_years.any():
+                year_series.loc[two_digit_years] = year_series.loc[two_digit_years] + 2000
+
+            valid = month_series.notna() & year_series.notna()
+            dt_series = pd.Series(pd.NaT, index=df.index, dtype='datetime64[ns]')
+            if valid.any():
+                dt_series.loc[valid] = pd.to_datetime(
+                    {
+                        'year': year_series.loc[valid].astype(int),
+                        'month': month_series.loc[valid].astype(int),
+                        'day': 1,
+                    },
+                    errors='coerce'
+                )
+            mask = dt_series.notna() & (dt_series.dt.to_period('M') >= effective_period)
+            return df[mask.fillna(False)].copy()
+
+        if month_col:
+            parsed_pairs = df[month_col].apply(_parse_month_year_value)
+            month_series = parsed_pairs.apply(lambda x: x[0] if x else None)
+            year_series = parsed_pairs.apply(lambda x: x[1] if x else None)
+
+            has_explicit_year = year_series.notna().any()
+            if has_explicit_year:
+                month_num = pd.to_numeric(month_series, errors='coerce')
+                year_num = pd.to_numeric(year_series, errors='coerce')
+                valid = month_num.notna() & year_num.notna()
+                dt_series = pd.Series(pd.NaT, index=df.index, dtype='datetime64[ns]')
+                if valid.any():
+                    dt_series.loc[valid] = pd.to_datetime(
+                        {
+                            'year': year_num.loc[valid].astype(int),
+                            'month': month_num.loc[valid].astype(int),
+                            'day': 1,
+                        },
+                        errors='coerce'
+                    )
+                mask = dt_series.notna() & (dt_series.dt.to_period('M') >= effective_period)
+                return df[mask.fillna(False)].copy()
+
+            parsed_dates = pd.to_datetime(df[month_col], errors='coerce', dayfirst=False)
+            if parsed_dates.notna().any():
+                mask = parsed_dates.dt.to_period('M') >= effective_period
+                return df[mask.fillna(False)].copy()
+
+            month_only = df[month_col].apply(_parse_month_value)
+            mask = month_only >= int(effective_month)
+            return df[mask.fillna(False)].copy()
+
+        if date_col:
+            parsed_dates = pd.to_datetime(df[date_col], errors='coerce', dayfirst=False)
+            mask = parsed_dates.notna() & (parsed_dates.dt.to_period('M') >= effective_period)
+            return df[mask.fillna(False)].copy()
+
+        logger.warning("No date/month columns found in loan requirements; returning unfiltered data")
+        return df
+    except Exception as e:
+        logger.warning(f"Loan requirements filtering failed: {str(e)}")
+        return df
 
 
 def find_column(df: pd.DataFrame, candidates: list) -> Optional[str]:
