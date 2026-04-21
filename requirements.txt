@@ -1,0 +1,29 @@
+# Core
+fastapi>=0.136.0,<1.0.0
+uvicorn[standard]>=0.44.0,<1.0.0
+python-multipart>=0.0.9
+
+# Data Processing
+pandas>=3.0.2,<4.0.0
+numpy>=2.4.0,<3.0.0
+
+# Google Sheets
+gspread>=6.2.1
+google-auth>=2.25.2
+google-auth-oauthlib>=1.2.0
+
+# Security & JWT
+PyJWT>=2.8.1
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Pydantic & Validation
+pydantic>=2.13.3,<3.0.0
+pydantic-settings>=2.1.0
+
+# Utilities
+python-dotenv>=1.0.0
+pyOpenSSL>=23.3.0
+
+# Optional: For production
+gunicorn>=21.2.0

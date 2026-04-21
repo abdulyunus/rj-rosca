@@ -1,0 +1,37 @@
+# Render.com Deployment Configuration
+
+services:
+  - type: web
+    name: rosca-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+      - key: SECRET_KEY
+        generateValue: true          # Render auto-generates a secure random key
+      - key: SHEET_NAME
+        value: RJ_ROSCA_General_July23
+      - key: CORS_ORIGINS
+        value: "*"                   # Restrict to your Flutter app domain after first deploy
+      - key: CACHE_TTL_SECONDS
+        value: 3600
+      - key: USER_CREDENTIALS_SHEET
+        value: user_credentails
+      - key: MAIN_SHEET
+        value: Main_Calculations
+      - key: LOAN_SHEET
+        value: loan_waterfall_c2
+      - key: LOAN_REQUIREMENTS_SHEET
+        value: loan_requirements
+      - key: MISCELLANEOUS_SHEET
+        value: miscellaneous
+      # GOOGLE_CREDENTIALS_JSON — paste the full contents of credentials.json
+      # Set this manually in the Render Dashboard (Environment tab)
+      # - key: GOOGLE_CREDENTIALS_JSON
+      #   value: <paste entire credentials.json content here>
