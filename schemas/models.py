@@ -30,6 +30,12 @@ class UserInfo(BaseModel):
     member_name: str
     role: Optional[str] = None
     team_lead: Optional[str] = None
+    total_payment_till_date: float = 0.0
+    total_number_of_months: int = 0
+    registration_amount: float = 0.0
+    your_money: float = 0.0
+    miscellaneous_total: float = 0.0
+    miscellaneous_per_member: float = 0.0
 
 
 # ============ Metrics Models ============
