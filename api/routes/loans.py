@@ -6,9 +6,10 @@ from fastapi import APIRouter, HTTPException, status, Query, Depends
 import logging
 from datetime import date, datetime
 import pandas as pd
+import gspread
 
-from schemas.models import LoansResponse, LoanItem
-from services.data_loader import load_loan_data, load_loan_requirements_data
+from schemas.models import LoansResponse, LoanItem, LoanRequirementCreateRequest, LoanRequirementCreateResponse
+from services.data_loader import load_loan_data, load_loan_requirements_data, load_user_credentials
 from services.loan_services import (
     get_user_active_loans,
     add_loan_projection_columns,
@@ -19,6 +20,7 @@ from services.loan_services import (
 from services.data_processor import filter_loan_requirements_current_and_future, find_column
 from core.security import get_current_user
 from core.config import settings
+from core.database import get_worksheet
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +235,32 @@ def _parse_period(value):
     return None
 
 
+def _find_header_column(headers, candidates):
+    """Find a header name using exact/case-insensitive candidate matching."""
+    header_map = {str(h).strip().lower(): str(h) for h in headers}
+    for candidate in candidates:
+        normalized = str(candidate).strip().lower()
+        if normalized in header_map:
+            return header_map[normalized]
+    return None
+
+
+def _effective_month_label(today: date, cutoff_day: int) -> str:
+    """Return effective month label as Mon-YY using cutoff rule."""
+    if today.day < cutoff_day:
+        if today.month == 1:
+            effective_year = today.year - 1
+            effective_month = 12
+        else:
+            effective_year = today.year
+            effective_month = today.month - 1
+    else:
+        effective_year = today.year
+        effective_month = today.month
+
+    return datetime(effective_year, effective_month, 1).strftime("%b-%y")
+
+
 @router.get("/monthly-loan-summary")
 async def get_monthly_loan_summary(token_payload: dict = Depends(get_current_user)):
     """
@@ -400,4 +428,137 @@ async def get_loan_details(loan_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve loan details"
+        )
+
+
+@router.post("/requirements")
+async def create_loan_requirement(
+    request_data: LoanRequirementCreateRequest,
+    token_payload: dict = Depends(get_current_user),
+):
+    """
+    Create a new loan requirement request in loan_requirements sheet.
+
+    Inserts at the first empty row and auto-resolves team lead
+    from user_credentails using member_name.
+    """
+    try:
+        client = get_client()
+        _ = token_payload
+
+        df_users = load_user_credentials(client)
+        if df_users.empty:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User credentials data not found"
+            )
+
+        member_col = find_column(df_users, ["Member Name", "member_name", "Name"])
+        team_lead_col = find_column(df_users, ["Team Lead", "team_lead", "TeamLead", "TL"])
+        if not member_col or not team_lead_col:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Required columns not found in user_credentails (Member Name, Team Lead)"
+            )
+
+        member_series = df_users[member_col].astype(str).str.strip().str.lower()
+        requested_member = request_data.member_name.strip()
+        matches = df_users[member_series == requested_member.lower()]
+        if matches.empty:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Member '{requested_member}' not found in user_credentails"
+            )
+
+        team_lead = str(matches.iloc[0].get(team_lead_col, "")).strip()
+
+        worksheet = get_worksheet(client, settings.SHEET_NAME, settings.LOAN_REQUIREMENTS_SHEET)
+        all_values = worksheet.get_all_values()
+        if not all_values:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="loan_requirements sheet has no header row"
+            )
+
+        headers = [str(h).strip() for h in all_values[0]]
+        month_col = _find_header_column(headers, ["Month"])
+        member_name_col = _find_header_column(headers, ["member_name", "Member Name", "Name"])
+        team_lead_target_col = _find_header_column(headers, ["team_lead", "Team Lead", "TeamLead", "TL"])
+        loan_unit_req_col = _find_header_column(headers, ["loan_unit_req", "Loan Unit Req", "Loan Unit", "Unit Req"])
+        loan_amount_req_col = _find_header_column(headers, ["loan_amount_req", "Loan Amount Req", "Loan Amount", "Amount Req"])
+        reason_col = _find_header_column(headers, ["Reason", "reason", "Loan Reason"])
+
+        missing_cols = []
+        for column_name, column_value in [
+            ("Month", month_col),
+            ("member_name", member_name_col),
+            ("team_lead", team_lead_target_col),
+            ("loan_unit_req", loan_unit_req_col),
+            ("loan_amount_req", loan_amount_req_col),
+        ]:
+            if not column_value:
+                missing_cols.append(column_name)
+
+        if missing_cols:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Required column(s) not found in loan_requirements: {', '.join(missing_cols)}"
+            )
+
+        # Find first empty row (after header); if none empty in current data, append next row.
+        target_row_number = None
+        for idx, row in enumerate(all_values[1:], start=2):
+            if not any(str(cell).strip() for cell in row):
+                target_row_number = idx
+                break
+        if target_row_number is None:
+            target_row_number = len(all_values) + 1
+
+        cutoff_day = int(getattr(settings, "EMI_CUTOFF_DAY", 5) or 5)
+        month_value = (request_data.month or "").strip() or _effective_month_label(date.today(), cutoff_day)
+
+        row_payload = {
+            month_col: month_value,
+            member_name_col: requested_member,
+            team_lead_target_col: team_lead,
+            loan_unit_req_col: request_data.loan_unit_req,
+            loan_amount_req_col: request_data.loan_amount_req,
+        }
+        if reason_col:
+            row_payload[reason_col] = request_data.reason or ""
+
+        full_row = [""] * len(headers)
+        for col_name, col_value in row_payload.items():
+            full_row[headers.index(col_name)] = str(col_value)
+
+        end_cell = gspread.utils.rowcol_to_a1(target_row_number, len(headers))
+        worksheet.update(
+            f"A{target_row_number}:{end_cell}",
+            [full_row],
+            value_input_option="USER_ENTERED",
+        )
+
+        inserted_data = {
+            "Month": month_value,
+            "member_name": requested_member,
+            "team_lead": team_lead,
+            "loan_unit_req": request_data.loan_unit_req,
+            "loan_amount_req": request_data.loan_amount_req,
+            "Reason": request_data.reason or "",
+        }
+
+        return LoanRequirementCreateResponse(
+            status="success",
+            message=f"Loan requirement added successfully at row {target_row_number}",
+            row_number=target_row_number,
+            inserted_data=inserted_data,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating loan requirement: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create loan requirement"
         )
