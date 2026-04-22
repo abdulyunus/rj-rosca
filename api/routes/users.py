@@ -5,6 +5,7 @@ Users API routes
 from fastapi import APIRouter, HTTPException, status, Depends
 import logging
 from datetime import date
+from datetime import datetime
 import pandas as pd
 
 from schemas.models import UserInfo
@@ -63,12 +64,13 @@ async def get_user_profile(token_payload: dict = Depends(get_current_user)):
             if member_name_col:
                 member_count = int(df_users[member_name_col].astype(str).str.strip().ne("").sum())
 
-            if login_col and role_col:
+            if login_col:
                 user_rows = df_users[
                     df_users[login_col].astype(str).str.strip().str.lower() == username.lower()
                 ]
                 if not user_rows.empty:
-                    role = str(user_rows.iloc[0].get(role_col, "")).strip() or role
+                    if role_col:
+                        role = str(user_rows.iloc[0].get(role_col, "")).strip() or role
                     if units_col:
                         user_units = to_float(user_rows.iloc[0].get(units_col, 0))
 
@@ -130,12 +132,44 @@ async def get_user_profile(token_payload: dict = Depends(get_current_user)):
 
             return pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
 
+        def _parse_sheet_month_period(value):
+            """Parse values like Jan-25, Apr-26, May-27 into monthly periods."""
+            text = str(value).strip()
+            if not text:
+                return None
+
+            for fmt in ("%b-%y", "%b-%Y", "%B-%y", "%B-%Y"):
+                try:
+                    parsed = datetime.strptime(text, fmt)
+                    return pd.Period(year=parsed.year, month=parsed.month, freq="M")
+                except ValueError:
+                    continue
+
+            parsed_dt = pd.to_datetime(text, errors="coerce", dayfirst=False)
+            if pd.notna(parsed_dt):
+                return pd.Period(year=int(parsed_dt.year), month=int(parsed_dt.month), freq="M")
+
+            return None
+
         total_payment_till_date = 0.0
         total_number_of_months = 0
         if not df_main.empty:
             amount_col = find_column(df_main, ["Amount Collected", "amount collected", "collection amount"])
             if amount_col:
                 row_dates = _build_month_year_series(df_main)
+                cutoff_period = pd.Period(year=cutoff_year, month=cutoff_month, freq="M")
+
+                month_col_main = find_column(df_main, ["Month", "month"])
+                payment_valid_rows = pd.Series([False] * len(df_main), index=df_main.index)
+                if month_col_main:
+                    month_periods_for_payment = df_main[month_col_main].apply(_parse_sheet_month_period)
+                    payment_valid_rows = month_periods_for_payment.notna() & (month_periods_for_payment <= cutoff_period)
+                else:
+                    payment_valid_rows = row_dates.notna() & (row_dates.dt.to_period("M") <= cutoff_period)
+
+                amount_sum = df_main.loc[payment_valid_rows, amount_col].apply(to_float).sum()
+                total_payment_till_date = float(amount_sum) * float(user_units)
+
                 start_dt = None
                 month_col = find_column(df_main, ["month"])
                 if month_col:
@@ -192,8 +226,6 @@ async def get_user_profile(token_payload: dict = Depends(get_current_user)):
                         total_number_of_months = 0
                 else:
                     total_number_of_months = 0
-                amount_sum = df_main.loc[valid_rows, amount_col].apply(to_float).sum()
-                total_payment_till_date = float(amount_sum) * float(user_units)
 
         miscellaneous_total = 0.0
         miscellaneous_per_member = 0.0
