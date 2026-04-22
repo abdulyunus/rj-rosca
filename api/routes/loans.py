@@ -14,6 +14,7 @@ from services.loan_services import (
     add_loan_projection_columns,
     convert_loans_to_items,
     parse_month_label,
+    to_float,
 )
 from services.data_processor import filter_loan_requirements_current_and_future, find_column
 from core.security import get_current_user
@@ -287,6 +288,9 @@ async def get_monthly_loan_summary(token_payload: dict = Depends(get_current_use
         )
         name_col = find_column(df_loan, ["Name", "Member Name", "Customer Name"])
         team_lead_col = find_column(df_loan, ["Team Lead", "TeamLead", "Team_Lead", "TL"])
+        loan_amount_col = find_column(df_loan, ["Loan Amount", "Loan", "Total Loan Amount", "Disbursed Amount"])
+        emi_start_col = find_column(df_loan, ["EMI Start Month", "EMI_Start_Month", "EMI Start Date", "Start Month"])
+        loan_taken_date_col = find_column(df_loan, ["Loan Taken Date", "Loan Date", "Disbursed Date", "Date"])
 
         month_periods = df_loan[month_col].apply(_parse_period) if month_col else pd.Series([None] * len(df_loan), index=df_loan.index)
         close_periods = df_loan[close_month_col].apply(_parse_period) if close_month_col else pd.Series([None] * len(df_loan), index=df_loan.index)
@@ -322,6 +326,9 @@ async def get_monthly_loan_summary(token_payload: dict = Depends(get_current_use
                     "name": str(row.get(name_col, "")).strip() if name_col else "",
                     "team_lead": str(row.get(team_lead_col, "")).strip() if team_lead_col else "",
                     "status": str(row.get(status_col, "")).strip() if status_col else "",
+                    "loan_amount": to_float(row.get(loan_amount_col, 0)) if loan_amount_col else 0.0,
+                    "emi_start_date": str(row.get(emi_start_col, "")).strip() if emi_start_col else "",
+                    "loan_taken_date": str(row.get(loan_taken_date_col, "")).strip() if loan_taken_date_col else "",
                     "close_month": str(close_period) if close_period else str(row.get(close_month_col, "")).strip(),
                 }
             )
