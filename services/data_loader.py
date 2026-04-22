@@ -69,6 +69,16 @@ def load_loan_requirements_data(client, sheet_name: str = None) -> pd.DataFrame:
     )
 
 
+def load_collections_data(client, sheet_name: str = None) -> pd.DataFrame:
+    """Load collections data"""
+    return load_sheet_data(
+        client,
+        sheet_name or settings.SHEET_NAME,
+        settings.COLLECTIONS_SHEET,
+        settings.COLLECTIONS_RANGE
+    )
+
+
 def load_miscellaneous_data(client, sheet_name: str = None) -> pd.DataFrame:
     """Load miscellaneous data"""
     return load_sheet_data(
