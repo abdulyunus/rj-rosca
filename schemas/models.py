@@ -89,6 +89,25 @@ class LoansResponse(BaseModel):
     year: Optional[int] = None
 
 
+# ============ Loan Requirements Models ============
+
+class LoanRequirementCreateRequest(BaseModel):
+    """Create a loan requirement request"""
+    member_name: str = Field(..., min_length=1)
+    loan_unit_req: float = Field(..., gt=0)
+    loan_amount_req: float = Field(..., gt=0)
+    reason: Optional[str] = None
+    month: Optional[str] = None
+
+
+class LoanRequirementCreateResponse(BaseModel):
+    """Response from loan requirement create"""
+    status: str = "success"
+    message: str
+    row_number: int
+    inserted_data: Dict[str, Any]
+
+
 # ============ Collection Models ============
 
 class CollectionMember(BaseModel):
