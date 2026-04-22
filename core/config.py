@@ -51,12 +51,14 @@ class Settings(BaseSettings):
     MAIN_SHEET: str = "Main_Calculations"
     LOAN_SHEET: str = "loan_waterfall_c2"
     LOAN_REQUIREMENTS_SHEET: str = "loan_requirements"
+    COLLECTIONS_SHEET: str = "Collections"
     MISCELLANEOUS_SHEET: str = "miscellaneous"
     
     # Ranges
     MAIN_RANGE: str = "A1:Q100"
     LOAN_RANGE: str = "A1:H100000"
     LOAN_REQUIREMENTS_RANGE: str = "A1:F10000"
+    COLLECTIONS_RANGE: str = "A1:Z10000"
     MISCELLANEOUS_RANGE: str = "A1:Z10000"
     
     # EMI settings
