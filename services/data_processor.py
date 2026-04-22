@@ -309,7 +309,7 @@ def filter_loan_requirements_current_and_future(
 
 
 def find_column(df: pd.DataFrame, candidates: list) -> Optional[str]:
-    """Find column by case-insensitive matching."""
+    """Find column by case-insensitive matching"""
     normalized = {str(col).strip().lower(): col for col in df.columns}
     
     for name in candidates:
