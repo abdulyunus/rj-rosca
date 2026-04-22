@@ -34,6 +34,9 @@ class UserInfo(BaseModel):
     total_number_of_months: int = 0
     registration_amount: float = 0.0
     your_money: float = 0.0
+    upcoming_payment_share: float = 0.0
+    upcoming_payment_emi: float = 0.0
+    upcoming_payment_total: float = 0.0
     miscellaneous_total: float = 0.0
     miscellaneous_per_member: float = 0.0
 
