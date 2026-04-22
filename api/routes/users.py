@@ -9,10 +9,11 @@ from datetime import datetime
 import pandas as pd
 
 from schemas.models import UserInfo
-from services.data_loader import load_user_credentials, load_main_data, load_miscellaneous_data
+from services.data_loader import load_user_credentials, load_main_data, load_miscellaneous_data, load_collections_data, load_loan_data
 from core.security import get_current_user
 from services.data_processor import find_column, to_float
 from core.config import settings
+from services.loan_services import get_user_active_loans
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,12 @@ async def get_user_profile(token_payload: dict = Depends(get_current_user)):
         client = get_client()
         df_users = load_user_credentials(client)
         df_main = load_main_data(client)
+        df_loan = load_loan_data(client)
+        try:
+            df_collections = load_collections_data(client)
+        except Exception as exc:
+            logger.warning(f"Collections sheet unavailable for user profile: {str(exc)}")
+            df_collections = pd.DataFrame()
         df_misc = load_miscellaneous_data(client)
 
         username = str(token_payload.get("username") or token_payload.get("sub") or "").strip()
@@ -87,6 +94,13 @@ async def get_user_profile(token_payload: dict = Depends(get_current_user)):
         else:
             cutoff_year = today.year
             cutoff_month = today.month
+
+        if cutoff_month == 12:
+            upcoming_year = cutoff_year + 1
+            upcoming_month = 1
+        else:
+            upcoming_year = cutoff_year
+            upcoming_month = cutoff_month + 1
 
         def _build_month_year_series(df: pd.DataFrame) -> pd.Series:
             month_col = find_column(df, ["month"])
@@ -153,6 +167,9 @@ async def get_user_profile(token_payload: dict = Depends(get_current_user)):
 
         total_payment_till_date = 0.0
         total_number_of_months = 0
+        upcoming_payment_share = 0.0
+        upcoming_payment_emi = 0.0
+        upcoming_payment_total = 0.0
         if not df_main.empty:
             amount_col = find_column(df_main, ["Amount Collected", "amount collected", "collection amount"])
             if amount_col:
@@ -227,6 +244,52 @@ async def get_user_profile(token_payload: dict = Depends(get_current_user)):
                 else:
                     total_number_of_months = 0
 
+                if month_col_main:
+                    upcoming_period = pd.Period(year=upcoming_year, month=upcoming_month, freq="M")
+                    upcoming_payment_rows = month_periods_for_payment.notna() & (month_periods_for_payment == upcoming_period)
+                    upcoming_amount_sum = df_main.loc[upcoming_payment_rows, amount_col].apply(to_float).sum()
+                    upcoming_payment_share = float(upcoming_amount_sum) * float(user_units)
+
+        if not df_loan.empty:
+            member_name = str(token_payload.get("member_name") or "").strip()
+            if member_name:
+                upcoming_as_of_date = date(upcoming_year, upcoming_month, min(cutoff_day, 28))
+                user_loans = get_user_active_loans(df_loan, member_name, as_of_date=upcoming_as_of_date)
+                if not user_loans.empty:
+                    for _, loan_row in user_loans.iterrows():
+                        amount_to_pay = to_float(loan_row.get("Amount to Pay", 0))
+                        emi_remaining = int(loan_row.get("EMI Remaining", 0) or 0)
+                        if emi_remaining > 0:
+                            upcoming_payment_emi += amount_to_pay / emi_remaining
+
+        if not df_collections.empty:
+            collections_member_col = find_column(
+                df_collections,
+                ["member_name", "member name", "name", "team_member", "team member", "login_id", "login id", "username"],
+            )
+            collections_share_col = find_column(df_collections, ["share", "monthly_share", "monthly share"])
+            collections_emi_col = find_column(df_collections, ["emi", "monthly_emi", "monthly emi"])
+            collections_total_col = find_column(df_collections, ["total", "upcoming_payment", "upcoming payment", "payment total"])
+
+            if collections_member_col:
+                profile_member_name = str(token_payload.get("member_name") or "").strip().lower()
+                profile_username = username.lower()
+                collection_rows = df_collections[
+                    df_collections[collections_member_col].astype(str).str.strip().str.lower().isin(
+                        [value for value in [profile_member_name, profile_username] if value]
+                    )
+                ]
+                if not collection_rows.empty:
+                    collection_row = collection_rows.iloc[0]
+                    if collections_share_col and upcoming_payment_share == 0.0:
+                        upcoming_payment_share = to_float(collection_row.get(collections_share_col, 0))
+                    if collections_emi_col and upcoming_payment_emi == 0.0:
+                        upcoming_payment_emi = to_float(collection_row.get(collections_emi_col, 0))
+                    if collections_total_col and upcoming_payment_total == 0.0:
+                        upcoming_payment_total = to_float(collection_row.get(collections_total_col, 0))
+
+        upcoming_payment_total = upcoming_payment_share + upcoming_payment_emi if upcoming_payment_total == 0.0 else upcoming_payment_total
+
         miscellaneous_total = 0.0
         miscellaneous_per_member = 0.0
         registration_amount = float(user_units) * 500.0
@@ -248,6 +311,9 @@ async def get_user_profile(token_payload: dict = Depends(get_current_user)):
             total_number_of_months=total_number_of_months,
             registration_amount=round(registration_amount, 2),
             your_money=round(your_money, 2),
+            upcoming_payment_share=round(upcoming_payment_share, 2),
+            upcoming_payment_emi=round(upcoming_payment_emi, 2),
+            upcoming_payment_total=round(upcoming_payment_total, 2),
             miscellaneous_total=round(miscellaneous_total, 2),
             miscellaneous_per_member=round(miscellaneous_per_member, 2),
         )
