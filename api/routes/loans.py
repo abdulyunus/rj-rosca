@@ -172,10 +172,14 @@ async def get_loan_requirements(token_payload: dict = Depends(get_current_user))
     """
     Get loan requirements table as-is, filtered to current/future months.
     Cutoff rule: before 5th -> previous month, on/after 5th -> current month.
+
+    Each row includes:
+    - row_number: actual Google Sheet row number (use this for DELETE)
+    - can_delete: true only when the row belongs to the authenticated user
     """
     try:
         client = get_client()
-        _ = token_payload
+        requester_member_name = _normalize_name(token_payload.get("member_name", ""))
         logger.info("Fetching loan requirements")
 
         df_requirements = load_loan_requirements_data(client)
@@ -205,7 +209,16 @@ async def get_loan_requirements(token_payload: dict = Depends(get_current_user))
             cutoff_date=today,
             cutoff_day=cutoff_day,
         )
-        rows = filtered_df.fillna("").to_dict(orient="records")
+
+        # DataFrame index is 0-based; sheet row = index + 2 (row 1 is header)
+        member_col = find_column(filtered_df, ["member_name", "Member Name", "Name"])
+        rows = []
+        for idx, row in filtered_df.fillna("").iterrows():
+            row_dict = row.to_dict()
+            owner = _normalize_name(row_dict.get(member_col, "")) if member_col else ""
+            row_dict["row_number"] = int(idx) + 2
+            row_dict["can_delete"] = owner == requester_member_name
+            rows.append(row_dict)
 
         return {
             "total_count": len(rows),
@@ -263,6 +276,11 @@ def _effective_month_label(today: date, cutoff_day: int) -> str:
 
 def _normalize_text(value: str) -> str:
     """Normalize text for case-insensitive comparisons."""
+    return str(value or "").strip().lower()
+
+
+def _normalize_name(value: str) -> str:
+    """Normalize a member name exactly as POST stores it (strip, lowercase)."""
     return str(value or "").strip().lower()
 
 
@@ -575,71 +593,76 @@ async def delete_loan_requirement(
     token_payload: dict = Depends(get_current_user),
 ):
     """
-    Delete a loan requirement row.
+    Delete a loan requirement row by its sheet row number.
 
-    Authorization:
-    - Requirement owner only (member_name in row matches token member_name)
+    row_number is returned by GET /requirements in each row's 'row_number' field.
+    Authorization: only the owner of the row (member_name match) may delete it.
     """
     try:
+        # Row 1 is the header; data starts at row 2
         if row_number < 2:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="row_number must be greater than 1"
+                detail="row_number must be 2 or greater (row 1 is the header)"
             )
 
         client = get_client()
-        worksheet = get_worksheet(client, settings.SHEET_NAME, settings.LOAN_REQUIREMENTS_SHEET)
-        all_values = worksheet.get_all_values()
-        if not all_values:
+
+        # Load via the same path as GET so index arithmetic is identical:
+        # DataFrame index 0 = sheet row 2, index N = sheet row N+2
+        df_requirements = load_loan_requirements_data(client)
+        if df_requirements.empty:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="loan_requirements sheet has no header row"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No loan requirements data found"
             )
 
-        headers = [str(h).strip() for h in all_values[0]]
-        member_name_col = _find_header_column(headers, ["member_name", "Member Name", "Name"])
-        if not member_name_col:
+        # Translate sheet row_number -> DataFrame index
+        df_index = row_number - 2
+        if df_index not in df_requirements.index:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Requirement at row {row_number} not found"
+            )
+
+        target_row = df_requirements.loc[df_index]
+        member_col = find_column(df_requirements, ["member_name", "Member Name", "Name"])
+        if not member_col:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Required column 'member_name' not found in loan_requirements"
             )
 
-        max_data_row = len(all_values)
-        if row_number > max_data_row:
+        owner_member_name = str(target_row.get(member_col, ""))
+        if not owner_member_name.strip():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Requirement row {row_number} not found"
+                detail=f"Requirement at row {row_number} is empty"
             )
 
-        row_values = all_values[row_number - 1] if row_number - 1 < len(all_values) else []
-        if not any(str(cell).strip() for cell in row_values):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Requirement row {row_number} is already empty"
-            )
-
-        if len(row_values) < len(headers):
-            row_values = row_values + [""] * (len(headers) - len(row_values))
-
-        owner_member_name = row_values[headers.index(member_name_col)]
         requester_member_name = token_payload.get("member_name", "")
-
-        if _normalize_text(owner_member_name) != _normalize_text(requester_member_name):
+        if _normalize_name(owner_member_name) != _normalize_name(requester_member_name):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You can only delete your own requirement"
             )
 
-        end_cell = gspread.utils.rowcol_to_a1(row_number, len(headers))
+        # Clear the row in Google Sheets using the worksheet directly
+        worksheet = get_worksheet(client, settings.SHEET_NAME, settings.LOAN_REQUIREMENTS_SHEET)
+        num_cols = len(df_requirements.columns)
+        end_cell = gspread.utils.rowcol_to_a1(row_number, num_cols)
         worksheet.update(
             f"A{row_number}:{end_cell}",
-            [[""] * len(headers)],
+            [[""] * num_cols],
             value_input_option="USER_ENTERED",
         )
 
+        logger.info(
+            f"Requirement row {row_number} deleted by {requester_member_name}"
+        )
         return {
             "status": "success",
-            "message": f"Loan requirement row {row_number} deleted successfully",
+            "message": f"Loan requirement deleted successfully",
             "row_number": row_number,
             "deleted_by": token_payload.get("username") or token_payload.get("member_name"),
             "deleted_owner": owner_member_name,
