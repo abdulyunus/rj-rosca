@@ -261,6 +261,11 @@ def _effective_month_label(today: date, cutoff_day: int) -> str:
     return datetime(effective_year, effective_month, 1).strftime("%b-%y")
 
 
+def _normalize_text(value: str) -> str:
+    """Normalize text for case-insensitive comparisons."""
+    return str(value or "").strip().lower()
+
+
 @router.get("/monthly-loan-summary")
 async def get_monthly_loan_summary(token_payload: dict = Depends(get_current_user)):
     """
@@ -561,4 +566,90 @@ async def create_loan_requirement(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create loan requirement"
+        )
+
+
+@router.delete("/requirements/{row_number}")
+async def delete_loan_requirement(
+    row_number: int,
+    token_payload: dict = Depends(get_current_user),
+):
+    """
+    Delete a loan requirement row.
+
+    Authorization:
+    - Requirement owner only (member_name in row matches token member_name)
+    """
+    try:
+        if row_number < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="row_number must be greater than 1"
+            )
+
+        client = get_client()
+        worksheet = get_worksheet(client, settings.SHEET_NAME, settings.LOAN_REQUIREMENTS_SHEET)
+        all_values = worksheet.get_all_values()
+        if not all_values:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="loan_requirements sheet has no header row"
+            )
+
+        headers = [str(h).strip() for h in all_values[0]]
+        member_name_col = _find_header_column(headers, ["member_name", "Member Name", "Name"])
+        if not member_name_col:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Required column 'member_name' not found in loan_requirements"
+            )
+
+        max_data_row = len(all_values)
+        if row_number > max_data_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Requirement row {row_number} not found"
+            )
+
+        row_values = all_values[row_number - 1] if row_number - 1 < len(all_values) else []
+        if not any(str(cell).strip() for cell in row_values):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Requirement row {row_number} is already empty"
+            )
+
+        if len(row_values) < len(headers):
+            row_values = row_values + [""] * (len(headers) - len(row_values))
+
+        owner_member_name = row_values[headers.index(member_name_col)]
+        requester_member_name = token_payload.get("member_name", "")
+
+        if _normalize_text(owner_member_name) != _normalize_text(requester_member_name):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only delete your own requirement"
+            )
+
+        end_cell = gspread.utils.rowcol_to_a1(row_number, len(headers))
+        worksheet.update(
+            f"A{row_number}:{end_cell}",
+            [[""] * len(headers)],
+            value_input_option="USER_ENTERED",
+        )
+
+        return {
+            "status": "success",
+            "message": f"Loan requirement row {row_number} deleted successfully",
+            "row_number": row_number,
+            "deleted_by": token_payload.get("username") or token_payload.get("member_name"),
+            "deleted_owner": owner_member_name,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting loan requirement row {row_number}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete loan requirement"
         )
