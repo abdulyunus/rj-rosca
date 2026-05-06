@@ -259,7 +259,7 @@ def _find_header_column(headers, candidates):
 
 
 def _effective_month_label(today: date, cutoff_day: int) -> str:
-    """Return effective month label as Mon-YY using cutoff rule."""
+    """Return effective month label as Mon YYYY using cutoff rule."""
     if today.day < cutoff_day:
         if today.month == 1:
             effective_year = today.year - 1
@@ -271,7 +271,7 @@ def _effective_month_label(today: date, cutoff_day: int) -> str:
         effective_year = today.year
         effective_month = today.month
 
-    return datetime(effective_year, effective_month, 1).strftime("%b-%y")
+    return datetime(effective_year, effective_month, 1).strftime("%b %Y")
 
 
 def _normalize_text(value: str) -> str:
