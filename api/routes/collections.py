@@ -6,11 +6,13 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query
 import logging
 import pandas as pd
 from datetime import datetime
+from urllib.parse import quote
 
 from schemas.models import CollectionsResponse, TeamCollection, CollectionMember
 from services.data_loader import load_loan_data, load_user_credentials, load_main_data
 from services.auth_service import get_all_team_leads, get_team_members_from_credentials
 from services.loan_services import get_team_member_active_loans
+from services.metrics import calculate_metrics
 from core.security import get_current_user
 from services.data_processor import find_column, filter_by_month, normalize_member_name, to_float
 
@@ -139,6 +141,51 @@ def ensure_admin_access(token_payload: dict, df_users: pd.DataFrame) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Admin role required"
         )
+
+
+def _parse_period_value(value) -> pd.Period | None:
+    """Parse month-like values into a monthly period."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    for fmt in ("%b-%y", "%b-%Y", "%B-%y", "%B-%Y"):
+        try:
+            parsed = datetime.strptime(text, fmt)
+            return pd.Period(year=parsed.year, month=parsed.month, freq="M")
+        except ValueError:
+            continue
+
+    parsed_dt = pd.to_datetime(text, errors="coerce", dayfirst=False)
+    if pd.notna(parsed_dt):
+        return pd.Period(year=int(parsed_dt.year), month=int(parsed_dt.month), freq="M")
+
+    return None
+
+
+def _format_money(value: float) -> str:
+    """Format amount as rupee text for WhatsApp."""
+    return f"₹{float(value or 0):,.0f}/-"
+
+
+def _build_member_units_map(df_users: pd.DataFrame) -> dict[str, int]:
+    """Build normalized member name -> units map."""
+    if df_users.empty:
+        return {}
+
+    member_col = find_column(df_users, ["member_name", "member name", "name", "full_name", "full name"])
+    units_col = find_column(df_users, ["units", "unit", "no of units", "number of units", "share units"])
+    if not member_col or not units_col:
+        return {}
+
+    units_map = {}
+    for _, row in df_users.iterrows():
+        member_name = str(row.get(member_col, "")).strip().lower()
+        if not member_name:
+            continue
+        units_map[member_name] = int(to_float(row.get(units_col, 0)) or 0)
+
+    return units_map
 
 
 @router.get("/team/{team_lead}")
@@ -305,4 +352,125 @@ async def get_all_teams_collection(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve collections"
+        )
+
+
+@router.get("/whatsapp-message")
+async def get_collections_whatsapp_message(
+    token_payload: dict = Depends(get_current_user),
+    month: int = Query(default=datetime.now().month, ge=1, le=12),
+    year: int = Query(default=datetime.now().year, ge=2000, le=2100),
+):
+    """
+    Build an admin-only WhatsApp message for collection summary.
+
+    This endpoint only generates message text. Frontend can share it using WhatsApp.
+    """
+    try:
+        client = get_client()
+
+        # Admin-only access
+        df_users = load_user_credentials(client)
+        ensure_admin_access(token_payload, df_users)
+
+        # Dashboard-level metrics for the selected period
+        df_main = load_main_data(client)
+        metrics = calculate_metrics(df_main, month=month, year=year)
+
+        # Loan processed/cleared names for selected period
+        df_loan = load_loan_data(client)
+
+        name_col = find_column(df_loan, ["Name", "Member Name", "Customer Name"]) if not df_loan.empty else None
+        month_col = find_column(df_loan, ["Month", "Loan Month", "Month-Year", "Month Year"]) if not df_loan.empty else None
+        close_month_col = find_column(
+            df_loan,
+            [
+                "Last Month EMI",
+                "Last EMI Month",
+                "Last_EMI_Month",
+                "Closed Month",
+                "Closure Month",
+                "Close Month",
+                "End Month",
+            ],
+        ) if not df_loan.empty else None
+
+        selected_period = pd.Period(year=int(year), month=int(month), freq="M")
+        processed_names = []
+        cleared_names = []
+
+        if not df_loan.empty and name_col and month_col:
+            month_periods = df_loan[month_col].apply(_parse_period_value)
+            processed_df = df_loan[month_periods.apply(lambda p: p == selected_period)].copy()
+            processed_names = [
+                str(name).strip()
+                for name in processed_df[name_col].tolist()
+                if str(name).strip()
+            ]
+
+        if not df_loan.empty and name_col and close_month_col:
+            close_periods = df_loan[close_month_col].apply(_parse_period_value)
+            cleared_df = df_loan[close_periods.apply(lambda p: p == selected_period)].copy()
+            cleared_names = [
+                str(name).strip()
+                for name in cleared_df[name_col].tolist()
+                if str(name).strip()
+            ]
+
+        # Deduplicate while preserving order
+        processed_names = list(dict.fromkeys(processed_names))
+        cleared_names = list(dict.fromkeys(cleared_names))
+
+        period_label = datetime(year, month, 1).strftime("%B %Y")
+        lines = [
+            "📊 RJ-ROSCA Financial Summary",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "",
+            f"📅 Period: {period_label}",
+            "",
+            "💰 COLLECTION METRICS",
+            f"   💵 Total Collection: {_format_money(metrics.total_collection)}",
+            f"   📊 Total EMI: {_format_money(metrics.total_emi)}",
+            f"   🤝 Monthly Share: {_format_money(metrics.total_share)}",
+            f"   💳 Balance Available: {_format_money(metrics.balance_available)}",
+            "",
+            "📋 LOAN STATUS BREAKDOWN",
+            f"   Total Loans: {int(metrics.total_loans or 0)}",
+            f"   ✅ Processed: {int(metrics.loan_processed or 0)}",
+            f"   ✔️ Cleared: {int(metrics.loan_cleared or 0)}",
+            "",
+            "   Loan Processed:",
+        ]
+
+        if processed_names:
+            for index, member_name in enumerate(processed_names, start=1):
+                lines.append(f"   {index}. {member_name}")
+        else:
+            lines.append("   1. None")
+
+        lines.extend(["", "   Loan Cleared:"])
+        if cleared_names:
+            for index, member_name in enumerate(cleared_names, start=1):
+                lines.append(f"   {index}. {member_name}")
+        else:
+            lines.append("   1. None")
+
+        message = "\n".join(lines)
+        encoded_message = quote(message)
+
+        return {
+            "status": "success",
+            "month": str(month),
+            "year": year,
+            "message": message,
+            "whatsapp_url": f"https://wa.me/?text={encoded_message}",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating WhatsApp message: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate WhatsApp message"
         )
